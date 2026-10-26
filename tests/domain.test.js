@@ -49,6 +49,23 @@ test("imported players are intermediate, resting, and receive unique names", () 
   assert.ok(imported.every((player) => player.skill === 3 && player.status === "resting" && player.waitSince === null));
 });
 
+test("starting a session activates resting players and includes them in the opening matches", () => {
+  const session = createSession({
+    name: "Imported roster",
+    courts: 1,
+    format: "doubles",
+    organizerEmail: "organizer@example.com"
+  });
+  const imported = importRestingPlayers(session, ["Alex", "Casey", "Jamie", "Morgan"]);
+
+  const result = startSession(session);
+
+  assert.equal(session.status, "active");
+  assert.ok(imported.every((player) => player.status === "active" && player.waitSince !== null));
+  assert.equal(result.matches.length, 1);
+  assert.ok(result.matches[0].playerIds.every((id) => imported.some((player) => player.id === id)));
+});
+
 test("player import rejects invalid lists without adding partial players", () => {
   const session = fixture({ count: 1 });
   assert.throws(() => importRestingPlayers(session, ["Valid", "  "]), /Every imported player must have a name/);

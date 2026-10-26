@@ -171,9 +171,14 @@ export function importRestingPlayers(session, names) {
 export function startSession(session) {
   if (session.status !== "draft") throw new Error("Only a draft session can be started.");
   const required = session.format === "doubles" ? 4 : 2;
-  if (session.players.filter((player) => player.status === "active").length < required) {
-    throw new Error(`Add at least ${required} active players before starting ${session.format}.`);
+  const startablePlayers = session.players.filter((player) =>
+    player.status === "active" || player.status === "resting");
+  if (startablePlayers.length < required) {
+    throw new Error(`Add at least ${required} available or resting players before starting ${session.format}.`);
   }
+  session.players
+    .filter((player) => player.status === "resting")
+    .forEach((player) => setPlayerAvailability(session, player.id, "active"));
   session.status = "active";
   return generateMatches(session);
 }

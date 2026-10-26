@@ -258,7 +258,7 @@ window.addEventListener("resize", () => requestAnimationFrame(syncDashboardPanel
 function sessionControls() {
   if (session.status === "draft") {
     const needed = session.format === "doubles" ? 4 : 2;
-    const available = session.players.filter((player) => player.status === "active").length;
+    const available = session.players.filter((player) => ["active", "resting"].includes(player.status)).length;
     return `<button class="button button-primary" data-action="start-session" ${available < needed ? "disabled" : ""}>Start session <span aria-hidden="true">→</span></button>`;
   }
   if (session.status === "active") return '<button class="button button-pause" data-action="pause-session">Ⅱ Pause session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';

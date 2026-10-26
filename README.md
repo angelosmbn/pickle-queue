@@ -16,7 +16,7 @@ A local-first pickleball session manager for a single organizer. Run `npm start`
 - Browser `localStorage` persistence, so a refresh on the same browser/device keeps the session.
 - Gmail session reports sent at session start and end through a Vercel serverless function, plus a thank-you email to the organizer after feedback is submitted.
 
-Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads only paid participants and their public display names from the event page; it does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
+Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads only paid participants and their public display names from the event page; it does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. Resting players count toward the minimum to start a session and are returned to the active queue when the session starts. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
 
 ## How matching works
 
