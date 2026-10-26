@@ -18,8 +18,15 @@ const feedbackDialog = document.querySelector("#feedback-dialog");
 const feedbackForm = document.querySelector("#feedback-form");
 const confirmDialog = document.querySelector("#confirm-dialog");
 const confirmForm = document.querySelector("#confirm-form");
+const toastNotification = document.querySelector("#toast-notification");
+const toastMessage = document.querySelector("#toast-message");
+const toastIndicator = document.querySelector("#toast-indicator");
 let session;
 let notice = "";
+let validationNotice = "";
+let displayedNotice = "";
+let noticeTimeout;
+let createFormOpen = false;
 let addFormOpen = false;
 let reclubImportOpen = false;
 let importingReclub = false;
@@ -41,7 +48,7 @@ let resolveConfirmation;
 try {
   session = loadSession();
 } catch (error) {
-  notice = error.message;
+  notice = `Error: ${error.message}`;
 }
 
 function persist() {
@@ -49,16 +56,15 @@ function persist() {
 }
 
 function render() {
+  updateToast();
   if (!session) {
     app.innerHTML = `
       <section class="welcome">
-        <div class="welcome-mark">PQ</div>
+        <div class="welcome-mark">PQL</div>
         <p class="eyebrow">YOUR CLUB, IN GOOD ROTATION</p>
         <h1>Make every court<br>feel like <em>your court.</em></h1>
         <p class="welcome-copy">Fair, easy-to-run pickleball sessions—without a clipboard full of matchups.</p>
-        ${notice ? `<p class="notice notice-error" role="alert">${escapeHtml(notice)}</p>` : ""}
-        <form id="create-form" class="setup-card">
-        <p class="privacy-note">Your email is required for session reports and a thank-you after the session.</p>
+        ${createFormOpen ? `<form id="create-form" class="setup-card" novalidate>
         <label class="field-label" for="organizer-name">Your name</label>
         <input id="organizer-name" name="organizerName" class="text-input" required maxlength="70" autocomplete="name" placeholder="Organizer name">
         <label class="field-label" for="organizer-contact">Contact number</label>
@@ -84,7 +90,7 @@ function render() {
           <textarea id="session-notes" name="notes" class="text-input" rows="2" maxlength="240" placeholder="Anything players should know?"></textarea>
           <button class="button button-primary button-wide" type="submit">Create session <span aria-hidden="true">→</span></button>
           <p class="privacy-note">Saved on this device only. No account required.</p>
-        </form>
+        </form>` : '<button class="button button-primary welcome-start-button" type="button" data-action="show-create-form">Create or start a session <span aria-hidden="true">→</span></button>'}
       </section>`;
     return;
   }
@@ -120,14 +126,13 @@ function render() {
 
   app.innerHTML = `
     <header class="topbar">
-      <a class="brand" href="#" aria-label="PickleQueue ni Loyloy home"><span class="brand-mark">PQ</span><span>PickleQueue ni Loyloy</span></a>
+      <a class="brand" href="#" aria-label="PickleQueue ni Loyloy home"><span class="brand-mark">PQL</span><span>PickleQueue ni Loyloy</span></a>
       <div class="topbar-right">
         <span class="save-status"><span class="status-dot"></span> Saved on this device</span>
         ${session.status === "completed" ? '<span class="pill pill-done">Session complete</span>' : `<span class="pill pill-${session.status}">${titleCase(session.status)}</span>`}
       </div>
     </header>
     <div class="page">
-      ${notice ? `<div class="notice ${notice.startsWith("Error:") ? "notice-error" : "notice-info"}" role="status">${escapeHtml(notice)}<button data-action="dismiss-notice" aria-label="Dismiss">×</button></div>` : ""}
       <section class="session-heading">
         <div>
           <p class="eyebrow">${session.date ? formatDate(session.date) : "PICKLEBALL SESSION"} ${session.notes ? `· ${escapeHtml(session.notes)}` : ""}</p>
@@ -136,7 +141,7 @@ function render() {
         </div>
         <div class="session-actions">${sessionControls()}</div>
       </section>
-      ${session.status === "completed" ? `<section class="panel final-panel session-summary-panel"><div><p class="eyebrow">SESSION SUMMARY</p><h2>That's a wrap.</h2><p>${stats.completedGames} games played · ${session.players.length} players · average ${stats.averageGames.toFixed(1)} games per player.</p>${session.feedback ? `<p class="feedback-confirmation">Feedback submitted${session.feedbackRating ? ` · ${session.feedbackRating}/5 stars` : ""}.</p>` : '<p class="feedback-required">Submit the required feedback before starting a new session.</p>'}</div><div class="summary-actions">${session.feedback ? "" : '<button class="button button-secondary" data-action="submit-feedback">Submit feedback</button>'}<button class="button button-primary" data-action="new-session">Start New Session</button></div></section>` : ""}
+      ${session.status === "completed" ? `<section class="panel final-panel session-summary-panel"><div><p class="eyebrow">SESSION SUMMARY</p><h2>That's a wrap.</h2><p>${stats.completedGames} games played · ${session.players.length} players · average ${stats.averageGames.toFixed(1)} games per player.</p>${session.feedback ? `<p class="feedback-confirmation">Feedback submitted${session.feedbackRating ? ` · ${session.feedbackRating}/5 stars` : ""}.</p>` : '<p class="feedback-required">Submit the required feedback before starting a new session.</p>'}</div><div class="summary-actions">${session.feedback ? "" : '<button class="button button-feedback" data-action="submit-feedback">Submit feedback</button>'}<button class="button button-primary" data-action="new-session">Start New Session</button></div></section>` : ""}
       <section class="stat-strip" aria-label="Session overview">
         <div class="stat"><span class="stat-label">Players here</span><strong>${active}<small> / ${session.players.length}</small></strong><span class="stat-caption">${session.players.filter((player) => player.status === "resting").length} resting</span></div>
         <div class="stat"><span class="stat-label">Games played</span><strong>${stats.completedGames}</strong><span class="stat-caption">${session.format} format</span></div>
@@ -153,12 +158,12 @@ function render() {
             </div>
           </div>
           <div class="roster-content ${lineupPlayers.length > rosterPageSize ? "has-pagination" : ""}">
-            <form id="add-player-form" class="add-player-form ${addFormOpen ? "" : "hidden"}">
+            <form id="add-player-form" class="add-player-form ${addFormOpen ? "" : "hidden"}" novalidate>
               <input class="text-input" name="name" required maxlength="50" placeholder="Player name" aria-label="Player name" ${session.status === "completed" ? "disabled" : ""}>
               <select class="text-input" name="skill" aria-label="Skill level" ${session.status === "completed" ? "disabled" : ""}>${skillOptions(3)}</select>
               <button class="button button-primary button-small" type="submit" ${session.status === "completed" ? "disabled" : ""}>Add</button>
             </form>
-            <form id="reclub-import-form" class="reclub-import-form ${reclubImportOpen ? "" : "hidden"}">
+            <form id="reclub-import-form" class="reclub-import-form ${reclubImportOpen ? "" : "hidden"}" novalidate>
               <input id="reclub-event-url" class="text-input" name="eventUrl" type="url" required maxlength="2048" aria-label="Public Reclub event link" placeholder="https://reclub.co/m/EVENTCODE" ${session.status === "completed" || importingReclub ? "disabled" : ""}>
               <button class="button button-primary button-small" type="submit" ${session.status === "completed" || importingReclub ? "disabled" : ""}>${importingReclub ? "Importing…" : "Import confirmed"}</button>
             </form>
@@ -460,6 +465,153 @@ function showError(error) {
   render();
 }
 
+function validateForm(form) {
+  clearFormValidation(form);
+  const invalidTargets = getInvalidTargets(form);
+  if (!invalidTargets.length) {
+    clearValidationNotice();
+    return true;
+  }
+
+  for (const { field, group } of invalidTargets) {
+    if (group) {
+      group.classList.add("is-invalid");
+      group.querySelectorAll('input[type="radio"]').forEach((radio) => radio.setAttribute("aria-invalid", "true"));
+    } else {
+      field.classList.add("is-invalid");
+      field.setAttribute("aria-invalid", "true");
+    }
+  }
+
+  const message = validationSummaryText(invalidTargets);
+  const summary = document.createElement("p");
+  summary.className = "form-validation-message";
+  summary.setAttribute("aria-live", "off");
+  summary.textContent = message;
+  const actionRow = form.querySelector(".dialog-actions");
+  const submitButton = form.querySelector('button[type="submit"]');
+  if (actionRow) form.insertBefore(summary, actionRow);
+  else if (form.matches(".add-player-form, .reclub-import-form")) form.append(summary);
+  else form.insertBefore(summary, submitButton ?? null);
+  setValidationNotice(message, true);
+  updateToast();
+  invalidTargets[0].field.focus();
+  return false;
+}
+
+function getInvalidTargets(form) {
+  const targets = [];
+  const invalidGroups = new Set();
+  for (const field of form.elements) {
+    if (!field.willValidate || field.validity.valid) continue;
+    const group = field.type === "radio" ? field.closest(".feedback-rating") : null;
+    if (group) {
+      if (invalidGroups.has(group)) continue;
+      invalidGroups.add(group);
+      targets.push({ field, group, label: "session rating" });
+    } else {
+      const label = field.labels?.[0]?.textContent.replace(/\s*\(required\)\s*/i, "").trim() ||
+        field.getAttribute("aria-label") || "required field";
+      targets.push({ field, group: null, label });
+    }
+  }
+  return targets;
+}
+
+function validationSummaryText(targets) {
+  if (targets.length > 1) return `Please complete the ${targets.length} highlighted required fields before continuing.`;
+  const { field, label } = targets[0];
+  if (field.validity.valueMissing) return `Please complete the required ${label} before continuing.`;
+  return `${label}: ${field.validationMessage}`;
+}
+
+function clearFormValidation(form) {
+  form.querySelectorAll(".is-invalid").forEach((field) => field.classList.remove("is-invalid"));
+  form.querySelectorAll('[aria-invalid="true"]').forEach((field) => field.removeAttribute("aria-invalid"));
+  form.querySelectorAll(".form-validation-message").forEach((message) => message.remove());
+}
+
+function clearCorrectedField(field) {
+  if (!field.willValidate) return;
+  const form = field.form;
+  const radioGroup = field.type === "radio" ? field.closest(".feedback-rating") : null;
+  const hadValidationError = field.classList.contains("is-invalid") ||
+    radioGroup?.classList.contains("is-invalid") ||
+    form?.querySelector(".form-validation-message");
+  if (!hadValidationError) return;
+
+  if (field.validity.valid) {
+    field.classList.remove("is-invalid");
+    field.removeAttribute("aria-invalid");
+  }
+  if (field.type === "radio" && field.validity.valid) {
+    radioGroup?.classList.remove("is-invalid");
+    radioGroup?.querySelectorAll('[aria-invalid="true"]').forEach((radio) => radio.removeAttribute("aria-invalid"));
+  }
+  if (!form) return;
+  const invalidTargets = getInvalidTargets(form);
+  if (invalidTargets.length) {
+    const summary = form.querySelector(".form-validation-message");
+    if (summary) {
+      summary.textContent = validationSummaryText(invalidTargets);
+    }
+    return;
+  }
+  form.querySelectorAll(".form-validation-message").forEach((message) => message.remove());
+  clearValidationNotice();
+}
+
+function setValidationNotice(message, refresh = false) {
+  if (notice === message && !refresh) return;
+  if (notice === message) {
+    notice = "";
+    updateToast();
+  }
+  validationNotice = message;
+  notice = message;
+}
+
+function clearValidationNotice() {
+  if (!validationNotice) return;
+  if (notice === validationNotice) notice = "";
+  validationNotice = "";
+  updateToast();
+}
+
+function updateToast() {
+  if (!notice) {
+    clearTimeout(noticeTimeout);
+    noticeTimeout = null;
+    displayedNotice = "";
+    toastNotification.hidden = true;
+    toastNotification.classList.remove("is-fading", "toast-error");
+    toastMessage.textContent = "";
+    return;
+  }
+  if (notice === displayedNotice) return;
+
+  clearTimeout(noticeTimeout);
+  displayedNotice = notice;
+  const isError = notice.startsWith("Error:") || notice === validationNotice || notice.includes("emails could not be sent");
+  toastNotification.classList.toggle("toast-error", isError);
+  toastNotification.setAttribute("role", isError ? "alert" : "status");
+  toastNotification.setAttribute("aria-live", isError ? "assertive" : "polite");
+  toastIndicator.textContent = isError ? "!" : "✓";
+  toastMessage.textContent = notice;
+  toastNotification.classList.remove("is-fading");
+  toastNotification.hidden = false;
+
+  const currentNotice = notice;
+  noticeTimeout = setTimeout(() => {
+    toastNotification.classList.add("is-fading");
+    noticeTimeout = setTimeout(() => {
+      if (notice !== currentNotice) return;
+      notice = "";
+      updateToast();
+    }, 350);
+  }, 5000);
+}
+
 function commit() {
   persist();
   notice = "";
@@ -563,6 +715,11 @@ async function sendReportAndNotify(reportType) {
   }
 }
 
+document.addEventListener("reset", (event) => {
+  clearFormValidation(event.target);
+  clearValidationNotice();
+});
+
 function requestConfirmation({ title, message, confirmLabel = "Confirm", eyebrow = "CONFIRM ACTION" }) {
   document.querySelector("#confirm-title").textContent = title;
   document.querySelector("#confirm-message").textContent = message;
@@ -583,6 +740,7 @@ function closeConfirmation(confirmed) {
 
 app.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!validateForm(event.target)) return;
   const data = new FormData(event.target);
   try {
     if (event.target.id === "create-form") {
@@ -635,6 +793,7 @@ app.addEventListener("submit", async (event) => {
 
 resultForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!validateForm(resultForm)) return;
   const data = new FormData(resultForm);
   (async () => {
     try {
@@ -653,15 +812,14 @@ resultForm.addEventListener("submit", (event) => {
       resultDialog.close();
       commit();
     } catch (error) {
-      const message = document.querySelector("#score-rules");
-      message.textContent = error.message;
-      message.classList.add("notice-error");
+      showError(error);
     }
   })();
 });
 
 matchForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!validateForm(matchForm)) return;
   const data = new FormData(matchForm);
   const teamSize = session.format === "doubles" ? 2 : 1;
   const teams = [
@@ -680,14 +838,13 @@ matchForm.addEventListener("submit", (event) => {
     persist();
     render();
   } catch (error) {
-    const message = document.querySelector("#match-fairness");
-    message.textContent = error.message;
-    message.classList.add("notice-error");
+    showError(error);
   }
 });
 
 playerForm.addEventListener("submit", (event) => {
   event.preventDefault();
+  if (!validateForm(playerForm)) return;
   const data = new FormData(playerForm);
   try {
     updatePlayer(session, data.get("playerId"), {
@@ -697,9 +854,7 @@ playerForm.addEventListener("submit", (event) => {
     playerDialog.close();
     commit();
   } catch (error) {
-    const message = document.querySelector("#player-edit-error");
-    message.textContent = error.message;
-    message.classList.add("notice-error");
+    showError(error);
   }
 });
 
@@ -708,6 +863,7 @@ playerForm.addEventListener("change", updatePlayerPreview);
 
 organizerForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!validateForm(organizerForm)) return;
   try {
     updateOrganizerDetails(session, Object.fromEntries(new FormData(organizerForm)));
     organizerDialog.close();
@@ -733,34 +889,17 @@ organizerForm.querySelector('[data-action="cancel-organizer"]').addEventListener
 
 feedbackForm.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (!validateForm(feedbackForm)) return;
   const data = new FormData(feedbackForm);
-  const rating = Number(data.get("rating"));
   const feedback = data.get("feedback").trim();
-  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
-    feedbackForm.querySelector('input[name="rating"]').setCustomValidity("Select a star rating before submitting.");
-    feedbackForm.reportValidity();
-    return;
-  }
-  feedbackForm.querySelectorAll('input[name="rating"]').forEach((input) => input.setCustomValidity(""));
-  if (feedback.length < 3) {
-    feedbackForm.elements.feedback.setCustomValidity("Please enter at least 3 characters of feedback.");
-    feedbackForm.reportValidity();
-    return;
-  }
-  feedbackForm.elements.feedback.setCustomValidity("");
+  const rating = Number(data.get("rating"));
   session.feedbackRating = rating;
   session.feedback = feedback;
   feedbackDialog.close();
   await sendReportAndNotify("ended");
 });
-feedbackForm.querySelectorAll('input[name="rating"]').forEach((input) => {
-  input.addEventListener("change", () => {
-    feedbackForm.querySelectorAll('input[name="rating"]').forEach((option) => option.setCustomValidity(""));
-  });
-});
-feedbackForm.elements.feedback.addEventListener("input", () => {
-  feedbackForm.elements.feedback.setCustomValidity("");
-});
+document.addEventListener("input", (event) => clearCorrectedField(event.target));
+document.addEventListener("change", (event) => clearCorrectedField(event.target));
 
 confirmForm.addEventListener("submit", (event) => {
   event.preventDefault();
@@ -779,12 +918,21 @@ document.addEventListener("keydown", (event) => {
   render();
 });
 
+toastNotification.querySelector(".toast-dismiss").addEventListener("click", () => {
+  notice = "";
+  updateToast();
+});
 app.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const { action, id } = button.dataset;
   try {
-    if (action === "dismiss-notice") { notice = ""; render(); return; }
+    if (action === "show-create-form") {
+      createFormOpen = true;
+      render();
+      document.querySelector("#organizer-name").focus();
+      return;
+    }
     if (action === "roster-page" || action === "waiting-page") {
       const page = Number(button.dataset.page);
       if (!Number.isInteger(page) || page < 0) return;
@@ -1102,6 +1250,7 @@ app.addEventListener("change", (event) => {
 });
 
 function openResult(matchId, editing = false) {
+  clearFormValidation(resultForm);
   const match = session.matches.find((entry) => entry.id === matchId);
   const teamLabels = match.teams.map((team) => team.map((id) => session.players.find((player) => player.id === id)?.name ?? "Player").join(" + "));
   resultForm.dataset.mode = editing ? "edit-score" : "record-score";
@@ -1126,6 +1275,7 @@ document.addEventListener("click", (event) => {
 
 function openPlayerEditor(player) {
   if (!player) throw new Error("This player could not be found.");
+  clearFormValidation(playerForm);
   playerForm.elements.playerId.value = player.id;
   playerForm.elements.name.value = player.name;
   playerForm.querySelectorAll('input[name="skill"]').forEach((option) => {
@@ -1151,6 +1301,7 @@ function updatePlayerPreview() {
 }
 
 function openMatchEditor(mode, matchId = "") {
+  clearFormValidation(matchForm);
   if (session.status !== "active") throw new Error("Resume the session before changing matches.");
   const editing = mode === "edit";
   const match = editing ? session.matches.find((entry) => entry.id === matchId) : null;

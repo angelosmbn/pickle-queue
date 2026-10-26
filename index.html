@@ -5,12 +5,18 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f7f2">
     <title>PickleQueue ni Loyloy — Session manager</title>
-    <link rel="stylesheet" href="./styles.css?v=11">
+    <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=1">
+    <link rel="stylesheet" href="./styles.css?v=18">
   </head>
   <body>
     <main id="app" class="app-shell" aria-live="polite"></main>
+    <div id="toast-notification" class="toast-notification" hidden role="status" aria-live="polite" aria-atomic="true">
+      <span id="toast-indicator" class="toast-indicator" aria-hidden="true"></span>
+      <span id="toast-message" class="toast-message"></span>
+      <button type="button" class="toast-dismiss" aria-label="Dismiss notification">×</button>
+    </div>
     <dialog id="result-dialog" class="result-dialog">
-      <form id="result-form" method="dialog">
+      <form id="result-form" method="dialog" novalidate>
         <div class="dialog-heading">
           <div>
             <p class="eyebrow">FINISH GAME</p>
@@ -33,7 +39,7 @@
       </form>
     </dialog>
     <dialog id="match-dialog" class="result-dialog">
-      <form id="match-form" method="dialog">
+      <form id="match-form" method="dialog" novalidate>
         <div class="dialog-heading">
           <div>
             <p class="eyebrow" id="match-dialog-eyebrow">MATCH SETUP</p>
@@ -51,7 +57,7 @@
       </form>
     </dialog>
     <dialog id="player-dialog" class="player-dialog">
-      <form id="player-form" method="dialog">
+      <form id="player-form" method="dialog" novalidate>
         <div class="dialog-heading">
           <div>
             <p class="eyebrow">PLAYER PROFILE</p>
@@ -84,7 +90,7 @@
       </form>
     </dialog>
     <dialog id="organizer-dialog" class="result-dialog">
-      <form id="organizer-form" method="dialog">
+      <form id="organizer-form" method="dialog" novalidate>
         <div class="dialog-heading">
           <div>
             <p class="eyebrow">ORGANIZER DETAILS</p>
@@ -109,7 +115,7 @@
       </form>
     </dialog>
     <dialog id="feedback-dialog" class="result-dialog">
-      <form id="feedback-form" method="dialog">
+      <form id="feedback-form" method="dialog" novalidate>
         <div class="dialog-heading">
           <div>
             <p class="eyebrow">SESSION FEEDBACK</p>
@@ -130,7 +136,7 @@
         <textarea id="session-feedback" name="feedback" class="text-input" rows="5" required minlength="3" maxlength="1500" placeholder="What worked well, and what could be improved?"></textarea>
         <p class="dialog-hint">Your feedback will be included in the final session email.</p>
         <div class="dialog-actions">
-          <button type="submit" class="button button-primary">Submit feedback</button>
+          <button type="submit" class="button button-primary feedback-submit-button">Submit feedback</button>
         </div>
       </form>
     </dialog>
@@ -149,6 +155,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./src/app.js?v=5"></script>
+    <script type="module" src="./src/app.js?v=10"></script>
   </body>
 </html>
