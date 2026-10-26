@@ -78,7 +78,7 @@ function render() {
         <hr class="form-divider">
         <label class="field-label" for="session-name">Session name</label>
           <input id="session-name" name="name" class="text-input" required maxlength="70" placeholder="Saturday open play">
-          <div class="form-grid">
+          <div class="form-grid session-date-courts-grid">
             <div><label class="field-label" for="session-date">Date</label><input id="session-date" name="date" type="date" class="text-input" value="${new Date().toISOString().slice(0, 10)}"></div>
             <div><label class="field-label" for="session-courts">Courts</label><input id="session-courts" name="courts" type="number" min="1" max="12" value="2" class="text-input"></div>
           </div>
