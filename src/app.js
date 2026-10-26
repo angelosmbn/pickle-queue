@@ -79,7 +79,7 @@ function render() {
         <label class="field-label" for="session-name">Session name</label>
           <input id="session-name" name="name" class="text-input" required maxlength="70" placeholder="Saturday open play">
           <div class="form-grid session-date-courts-grid">
-            <div><label class="field-label" for="session-date">Date</label><input id="session-date" name="date" type="date" class="text-input" value="${new Date().toISOString().slice(0, 10)}"></div>
+            <div><label class="field-label" for="session-date">Date</label><input id="session-date" type="text" name="date" class="text-input" inputmode="text" autocomplete="off" placeholder="M/D/YYYY" aria-describedby="session-date-hint" value="${formatSessionDateInput(new Date())}"></div>
             <div><label class="field-label" for="session-courts">Courts</label><input id="session-courts" name="courts" type="number" min="1" max="12" value="2" class="text-input"></div>
           </div>
           <div class="form-grid">
@@ -460,6 +460,30 @@ function skillOptions(selected) {
   return SKILLS.map(({ label, value }) => `<option value="${value}" ${Number(selected) === value ? "selected" : ""}>${label}</option>`).join("");
 }
 
+function formatSessionDateInput(date) {
+  return `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+}
+
+function parseSessionDate(value) {
+  if (!value.trim()) return "";
+  const match = value.trim().match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (!match) return null;
+
+  const [, monthText, dayText, yearText] = match;
+  const month = Number(monthText);
+  const day = Number(dayText);
+  const year = Number(yearText);
+  const leapYear = year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
+  const daysInMonth = [31, leapYear ? 29 : 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][month - 1];
+  if (year < 1 || month < 1 || month > 12 || !daysInMonth || day < 1 || day > daysInMonth) return null;
+  return `${String(year).padStart(4, "0")}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+}
+
+function updateSessionDateValidity(input) {
+  const date = parseSessionDate(input.value);
+  input.setCustomValidity(date === null ? "Enter a valid date as M/D/YYYY." : "");
+}
+
 function showError(error) {
   notice = `Error: ${error.message}`;
   render();
@@ -717,6 +741,7 @@ async function sendReportAndNotify(reportType) {
 
 document.addEventListener("reset", (event) => {
   clearFormValidation(event.target);
+  event.target.querySelector("#session-date")?.setCustomValidity("");
   clearValidationNotice();
 });
 
@@ -740,11 +765,14 @@ function closeConfirmation(confirmed) {
 
 app.addEventListener("submit", async (event) => {
   event.preventDefault();
+  if (event.target.id === "create-form") updateSessionDateValidity(event.target.querySelector("#session-date"));
   if (!validateForm(event.target)) return;
   const data = new FormData(event.target);
   try {
     if (event.target.id === "create-form") {
-      session = createSession(Object.fromEntries(data.entries()));
+      const values = Object.fromEntries(data.entries());
+      values.date = parseSessionDate(values.date);
+      session = createSession(values);
       persist();
       notice = "";
       render();
@@ -898,7 +926,10 @@ feedbackForm.addEventListener("submit", async (event) => {
   feedbackDialog.close();
   await sendReportAndNotify("ended");
 });
-document.addEventListener("input", (event) => clearCorrectedField(event.target));
+document.addEventListener("input", (event) => {
+  if (event.target.matches("#session-date")) updateSessionDateValidity(event.target);
+  clearCorrectedField(event.target);
+});
 document.addEventListener("change", (event) => clearCorrectedField(event.target));
 
 confirmForm.addEventListener("submit", (event) => {
