@@ -64,9 +64,7 @@ export function parseConfirmedPlayers(html, eventCode) {
   for (const reference of participants) {
     const participant = resolveNode(nodes, reference);
     const status = propertyValue(nodes, participant, "status");
-    const tags = propertyValue(nodes, participant, "tags");
-    if (status !== 1 || !Array.isArray(tags) ||
-        !tags.some((tag) => resolveNode(nodes, tag) === "paid")) continue;
+    if (status !== 1) continue;
 
     const externalReference = propertyValue(nodes, participant, "externalReference");
     const guestName = propertyValue(nodes, externalReference, "name");
@@ -81,7 +79,7 @@ export function parseConfirmedPlayers(html, eventCode) {
     if (typeof name === "string" && name.trim()) names.push(name.trim());
   }
 
-  if (!names.length) throw new Error("No confirmed paid players were found in the public Reclub event.");
+  if (!names.length) throw new Error("No confirmed players were found in the public Reclub event.");
   if (names.length > 500) throw new Error("The event has too many confirmed players to import.");
   return names;
 }

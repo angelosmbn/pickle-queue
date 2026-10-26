@@ -23,6 +23,11 @@ let notice = "";
 let addFormOpen = false;
 let reclubImportOpen = false;
 let importingReclub = false;
+let rosterManagerOpen = false;
+let rosterManagerFilter = "all";
+let lineupSearch = "";
+let rosterManagerSearch = "";
+let selectedPlayerIds = new Set();
 const defaultRosterPageSize = 6;
 const paginationReservedSpace = 51;
 let rosterPageSize = defaultRosterPageSize;
@@ -91,15 +96,27 @@ function render() {
   const waiting = sortPlayersByName(session.players.filter((player) =>
     player.status === "active" && !playingIds.has(player.id) && !proposedIds.has(player.id)));
   const alphabeticalPlayers = sortPlayersByName(session.players);
+  const lineupPlayers = searchPlayers(alphabeticalPlayers, lineupSearch);
   const liveMatches = session.matches.filter((match) => ["proposed", "inProgress"].includes(match.status));
   const activeCourts = session.matches.filter((match) => match.status === "inProgress").length;
   const completed = session.matches.filter((match) => match.status === "completed").slice().reverse();
-  const rosterPageCount = Math.max(1, Math.ceil(session.players.length / rosterPageSize));
+  const rosterPageCount = Math.max(1, Math.ceil(lineupPlayers.length / rosterPageSize));
   const waitingPageCount = Math.max(1, Math.ceil(waiting.length / waitingPageSize));
   rosterPage = Math.min(rosterPage, rosterPageCount - 1);
   waitingPage = Math.min(waitingPage, waitingPageCount - 1);
-  const visiblePlayers = alphabeticalPlayers.slice(rosterPage * rosterPageSize, (rosterPage + 1) * rosterPageSize);
+  const visiblePlayers = lineupPlayers.slice(rosterPage * rosterPageSize, (rosterPage + 1) * rosterPageSize);
   const visibleWaiting = waiting.slice(waitingPage * waitingPageSize, (waitingPage + 1) * waitingPageSize);
+  const managerPlayers = searchPlayers(alphabeticalPlayers, rosterManagerSearch).filter((player) =>
+    rosterManagerFilter === "all" ||
+    managerPlayerStatus(player, playingIds, proposedIds, pausedIds) === rosterManagerFilter);
+  const selectedPlayers = session.players.filter((player) => selectedPlayerIds.has(player.id));
+  const selectedCanRest = selectedPlayers.filter((player) =>
+    player.status === "active" && !playingIds.has(player.id));
+  const selectedCanReturn = selectedPlayers.filter((player) =>
+    ["resting", "unavailable"].includes(player.status));
+  const selectedCanRemove = selectedPlayers.filter((player) =>
+    player.games === 0 && !playingIds.has(player.id));
+  const visibleSelectedCount = managerPlayers.filter((player) => selectedPlayerIds.has(player.id)).length;
 
   app.innerHTML = `
     <header class="topbar">
@@ -119,7 +136,7 @@ function render() {
         </div>
         <div class="session-actions">${sessionControls()}</div>
       </section>
-      ${session.status === "completed" ? `<section class="panel final-panel session-summary-panel"><div><p class="eyebrow">SESSION SUMMARY</p><h2>That's a wrap.</h2><p>${stats.completedGames} games played · ${session.players.length} players · average ${stats.averageGames.toFixed(1)} games per player.</p>${session.feedback ? '<p class="feedback-confirmation">Feedback submitted.</p>' : '<p class="feedback-required">Submit the required feedback before starting a new session.</p>'}</div><div class="summary-actions">${session.feedback ? "" : '<button class="button button-secondary" data-action="submit-feedback">Submit feedback</button>'}<button class="button button-primary" data-action="new-session">Start New Session</button></div></section>` : ""}
+      ${session.status === "completed" ? `<section class="panel final-panel session-summary-panel"><div><p class="eyebrow">SESSION SUMMARY</p><h2>That's a wrap.</h2><p>${stats.completedGames} games played · ${session.players.length} players · average ${stats.averageGames.toFixed(1)} games per player.</p>${session.feedback ? `<p class="feedback-confirmation">Feedback submitted${session.feedbackRating ? ` · ${session.feedbackRating}/5 stars` : ""}.</p>` : '<p class="feedback-required">Submit the required feedback before starting a new session.</p>'}</div><div class="summary-actions">${session.feedback ? "" : '<button class="button button-secondary" data-action="submit-feedback">Submit feedback</button>'}<button class="button button-primary" data-action="new-session">Start New Session</button></div></section>` : ""}
       <section class="stat-strip" aria-label="Session overview">
         <div class="stat"><span class="stat-label">Players here</span><strong>${active}<small> / ${session.players.length}</small></strong><span class="stat-caption">${session.players.filter((player) => player.status === "resting").length} resting</span></div>
         <div class="stat"><span class="stat-label">Games played</span><strong>${stats.completedGames}</strong><span class="stat-caption">${session.format} format</span></div>
@@ -135,7 +152,7 @@ function render() {
               <button class="button button-quiet button-small" data-action="toggle-reclub-import" ${session.status === "completed" ? "disabled" : ""}>Import Reclub</button>
             </div>
           </div>
-          <div class="roster-content ${session.players.length > rosterPageSize ? "has-pagination" : ""}">
+          <div class="roster-content ${lineupPlayers.length > rosterPageSize ? "has-pagination" : ""}">
             <form id="add-player-form" class="add-player-form ${addFormOpen ? "" : "hidden"}">
               <input class="text-input" name="name" required maxlength="50" placeholder="Player name" aria-label="Player name" ${session.status === "completed" ? "disabled" : ""}>
               <select class="text-input" name="skill" aria-label="Skill level" ${session.status === "completed" ? "disabled" : ""}>${skillOptions(3)}</select>
@@ -143,13 +160,21 @@ function render() {
             </form>
             <form id="reclub-import-form" class="reclub-import-form ${reclubImportOpen ? "" : "hidden"}">
               <input id="reclub-event-url" class="text-input" name="eventUrl" type="url" required maxlength="2048" aria-label="Public Reclub event link" placeholder="https://reclub.co/m/EVENTCODE" ${session.status === "completed" || importingReclub ? "disabled" : ""}>
-              <button class="button button-secondary button-small" type="submit" ${session.status === "completed" || importingReclub ? "disabled" : ""}>${importingReclub ? "Importing…" : "Import confirmed"}</button>
+              <button class="button button-primary button-small" type="submit" ${session.status === "completed" || importingReclub ? "disabled" : ""}>${importingReclub ? "Importing…" : "Import confirmed"}</button>
             </form>
-            <div class="roster-list ${session.players.length > rosterPageSize ? "has-pagination" : ""}">
-              ${session.players.length ? visiblePlayers.map((player) => playerRow(player, playingIds, proposedIds, pausedIds)).join("") : '<div class="empty-state"><span class="empty-icon">♧</span><strong>Your lineup starts here</strong><span>Add players to get the session going.</span></div>'}
+            <div class="roster-tools">
+              <label class="roster-search-wrap">
+                <input class="text-input roster-search" type="search" data-roster-search="lineup" value="${escapeHtml(lineupSearch)}" aria-label="Search lineup players" placeholder="Search players">
+              </label>
+              <button class="button button-secondary button-small roster-manager-trigger" data-action="open-player-manager">View all players <span aria-hidden="true">→</span></button>
+            </div>
+            <div class="roster-list ${lineupPlayers.length > rosterPageSize ? "has-pagination" : ""}">
+              ${visiblePlayers.length ? visiblePlayers.map((player) => playerRow(player, playingIds, proposedIds, pausedIds)).join("") :
+                lineupSearch ? '<div class="empty-state"><strong>No matching players</strong><span>Try a different name.</span></div>' :
+                  '<div class="empty-state"><span class="empty-icon">♧</span><strong>Your lineup starts here</strong><span>Add players to get the session going.</span></div>'}
             </div>
             ${session.status === "draft" ? '<p class="panel-hint">Add at least 2 players for singles or 4 for doubles, then start.</p>' : ""}
-            ${paginationControls("roster-page", rosterPage, rosterPageCount, session.players.length)}
+            ${paginationControls("roster-page", rosterPage, rosterPageCount, lineupPlayers.length)}
           </div>
         </section>
         <section class="panel matches-panel">
@@ -192,6 +217,46 @@ function render() {
         ${leaderboardTable(stats.players, true)}
       </section>
       ${completed.length ? `<section class="panel history-panel"><div class="panel-heading"><div><p class="eyebrow">THE RECORD</p><h2>Game history</h2></div><span class="muted">${completed.length} completed</span></div><div class="history-list">${completed.slice(0, 8).map(historyRow).join("")}</div></section>` : ""}
+      ${rosterManagerOpen ? `
+        <div class="roster-manager-backdrop" data-action="close-player-manager-backdrop">
+          <section class="roster-manager" role="dialog" aria-modal="true" aria-labelledby="roster-manager-title">
+            <div class="roster-manager-heading">
+              <div><p class="eyebrow">PLAYER MANAGEMENT</p><h2 id="roster-manager-title">All players <span class="count-badge">${session.players.length}</span></h2></div>
+              <button class="icon-button roster-manager-close" data-action="close-player-manager" aria-label="Close player manager">×</button>
+            </div>
+            <div class="roster-manager-toolbar">
+              <label class="roster-filter-label" for="roster-status-filter">Filter by status</label>
+              <select id="roster-status-filter" class="text-input" data-roster-filter>
+                ${[
+                  ["all", "All statuses"],
+                  ["active", "Active"],
+                  ["queued", "Queued"],
+                  ["playing", "Playing"],
+                  ["paused", "Paused"],
+                  ["resting", "Resting"],
+                  ["unavailable", "Unavailable"]
+                ].map(([value, label]) => `<option value="${value}" ${rosterManagerFilter === value ? "selected" : ""}>${label}</option>`).join("")}
+              </select>
+              <label class="roster-search-wrap">
+                <input class="text-input roster-search" type="search" data-roster-search="manager" value="${escapeHtml(rosterManagerSearch)}" aria-label="Search all players" placeholder="Search players">
+              </label>
+            </div>
+            <div class="roster-manager-selectbar">
+              <label><input type="checkbox" data-select-visible ${managerPlayers.length > 0 && visibleSelectedCount === managerPlayers.length ? "checked" : ""} ${managerPlayers.length ? "" : "disabled"}> Select visible</label>
+              <span>${selectedPlayerIds.size} selected</span>
+              <button class="button button-quiet button-small" data-action="clear-player-selection" ${selectedPlayerIds.size ? "" : "disabled"}>Clear</button>
+            </div>
+            <div class="roster-manager-list">
+              ${managerPlayers.length ? managerPlayers.map((player) => managerPlayerRow(player, playingIds, proposedIds, pausedIds)).join("") : '<p class="roster-manager-empty">No players match these filters.</p>'}
+            </div>
+            <div class="roster-manager-actions">
+              <button class="button button-secondary button-small" data-action="bulk-rest" ${session.status === "completed" || !selectedCanRest.length ? "disabled" : ""}>Mark rest${selectedCanRest.length ? ` (${selectedCanRest.length})` : ""}</button>
+              <button class="button button-quiet button-small" data-action="bulk-return" ${session.status === "completed" || !selectedCanReturn.length ? "disabled" : ""}>Return${selectedCanReturn.length ? ` (${selectedCanReturn.length})` : ""}</button>
+              <button class="button button-danger-quiet button-small" data-action="bulk-remove" ${session.status === "completed" || !selectedCanRemove.length ? "disabled" : ""}>Remove${selectedCanRemove.length ? ` (${selectedCanRemove.length})` : ""}</button>
+            </div>
+            <p class="roster-manager-hint">Players with recorded games cannot be removed. Changing the status of queued players cancels their queued matches.</p>
+          </section>
+        </div>` : ""}
       <footer class="page-footer">PickleQueue ni Loyloy <span>·</span> Fair play, better rotations.</footer>
     </div>`;
   requestAnimationFrame(syncDashboardPanels);
@@ -218,6 +283,7 @@ function fitRosterPageSize() {
   const rosterList = document.querySelector(".roster-list");
   const firstRow = rosterList?.querySelector(".player-row");
   if (!rosterPanel || !rosterList || !firstRow) return;
+  const matchingPlayerCount = searchPlayers(session.players, lineupSearch).length;
 
   let targetPageSize = defaultRosterPageSize;
   if (window.matchMedia("(min-width: 851px)").matches) {
@@ -233,7 +299,7 @@ function fitRosterPageSize() {
       : 0;
     const availableHeight = Math.max(0, panelBottom - listTop - hintSpace);
     const rowsWithoutPagination = Math.max(1, Math.floor(availableHeight / rowHeight));
-    const needsPagination = session.players.length > rowsWithoutPagination;
+    const needsPagination = matchingPlayerCount > rowsWithoutPagination;
     targetPageSize = Math.max(1, Math.floor(
       (availableHeight - (needsPagination ? paginationReservedSpace : 0)) / rowHeight
     ));
@@ -247,7 +313,7 @@ function fitRosterPageSize() {
     ? rosterAnchorIndexAfterResize
     : rosterPage * rosterPageSize;
   rosterPageSize = targetPageSize;
-  const pageCount = Math.max(1, Math.ceil(session.players.length / rosterPageSize));
+  const pageCount = Math.max(1, Math.ceil(matchingPlayerCount / rosterPageSize));
   rosterPage = Math.min(Math.floor(anchorIndex / rosterPageSize), pageCount - 1);
   rosterAnchorIndexAfterResize = null;
   render();
@@ -284,6 +350,29 @@ function playerRow(player, playingIds, proposedIds, pausedIds) {
       ${player.games === 0 && !playingIds.has(player.id) && session.status !== "completed" ? `<button class="icon-button" data-action="remove-player" data-id="${player.id}" title="Remove ${escapeHtml(player.name)}" aria-label="Remove ${escapeHtml(player.name)}">×</button>` : ""}
     </div>
   </article>`;
+}
+
+function managerPlayerStatus(player, playingIds, proposedIds, pausedIds) {
+  if (playingIds.has(player.id)) return pausedIds.has(player.id) ? "paused" : "playing";
+  if (proposedIds.has(player.id)) return "queued";
+  return player.status;
+}
+
+function searchPlayers(players, query) {
+  const normalizedQuery = query.trim().toLocaleLowerCase();
+  return normalizedQuery
+    ? players.filter((player) => player.name.toLocaleLowerCase().includes(normalizedQuery))
+    : players;
+}
+
+function managerPlayerRow(player, playingIds, proposedIds, pausedIds) {
+  const status = managerPlayerStatus(player, playingIds, proposedIds, pausedIds);
+  return `<label class="roster-manager-player">
+    <input type="checkbox" data-roster-player="${escapeHtml(player.id)}" ${selectedPlayerIds.has(player.id) ? "checked" : ""} aria-label="Select ${escapeHtml(player.name)}">
+    <span class="avatar avatar-${player.skill}">${initials(player.name)}</span>
+    <span class="roster-manager-player-main"><strong>${escapeHtml(player.name)}</strong><small>${skillName(player.skill)} · ${player.games} ${plural(player.games, "game")}</small></span>
+    <span class="player-status status-${status}">${titleCase(status)}</span>
+  </label>`;
 }
 
 function sortPlayersByName(players) {
@@ -415,7 +504,12 @@ function buildSessionReport(reportType) {
     lines.push(`- Game ${index + 1} · ${titleCase(match.status)}${match.court ? ` · Court ${match.court}` : ""}: ${teams[0]} vs ${teams[1]}${score}`);
   });
   if (reportType === "ended") {
-    lines.push("", "Organizer feedback:", session.feedback || "Not submitted.");
+    lines.push(
+      "",
+      "Organizer feedback:",
+      session.feedbackRating ? `Rating: ${session.feedbackRating}/5 stars` : "Rating: Not provided",
+      session.feedback || "Not submitted."
+    );
   }
   return lines.join("\n");
 }
@@ -498,6 +592,7 @@ app.addEventListener("submit", async (event) => {
       render();
     } else if (event.target.id === "add-player-form") {
       const addedPlayer = addPlayer(session, Object.fromEntries(data.entries()));
+      lineupSearch = "";
       addFormOpen = true;
       const sortedPlayerIndex = sortPlayersByName(session.players).findIndex((player) => player.id === addedPlayer.id);
       rosterAnchorIndexAfterResize = sortedPlayerIndex;
@@ -523,6 +618,7 @@ app.addEventListener("submit", async (event) => {
           throw new Error("The Reclub import returned an invalid player list.");
         }
         const imported = importRestingPlayers(session, result.players);
+        lineupSearch = "";
         persist();
         notice = `Imported ${imported.length} confirmed player${imported.length === 1 ? "" : "s"} as Intermediate and placed them on break.`;
         reclubImportOpen = false;
@@ -637,16 +733,30 @@ organizerForm.querySelector('[data-action="cancel-organizer"]').addEventListener
 
 feedbackForm.addEventListener("submit", async (event) => {
   event.preventDefault();
-  const feedback = new FormData(feedbackForm).get("feedback").trim();
+  const data = new FormData(feedbackForm);
+  const rating = Number(data.get("rating"));
+  const feedback = data.get("feedback").trim();
+  if (!Number.isInteger(rating) || rating < 1 || rating > 5) {
+    feedbackForm.querySelector('input[name="rating"]').setCustomValidity("Select a star rating before submitting.");
+    feedbackForm.reportValidity();
+    return;
+  }
+  feedbackForm.querySelectorAll('input[name="rating"]').forEach((input) => input.setCustomValidity(""));
   if (feedback.length < 3) {
     feedbackForm.elements.feedback.setCustomValidity("Please enter at least 3 characters of feedback.");
     feedbackForm.reportValidity();
     return;
   }
   feedbackForm.elements.feedback.setCustomValidity("");
+  session.feedbackRating = rating;
   session.feedback = feedback;
   feedbackDialog.close();
   await sendReportAndNotify("ended");
+});
+feedbackForm.querySelectorAll('input[name="rating"]').forEach((input) => {
+  input.addEventListener("change", () => {
+    feedbackForm.querySelectorAll('input[name="rating"]').forEach((option) => option.setCustomValidity(""));
+  });
 });
 feedbackForm.elements.feedback.addEventListener("input", () => {
   feedbackForm.elements.feedback.setCustomValidity("");
@@ -660,6 +770,13 @@ confirmForm.querySelector('[data-action="cancel-confirm"]').addEventListener("cl
 confirmDialog.addEventListener("cancel", (event) => {
   event.preventDefault();
   closeConfirmation(false);
+});
+
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape" || !rosterManagerOpen || confirmDialog.open) return;
+  rosterManagerOpen = false;
+  selectedPlayerIds.clear();
+  render();
 });
 
 app.addEventListener("click", async (event) => {
@@ -678,14 +795,41 @@ app.addEventListener("click", async (event) => {
     }
     if (action === "toggle-add") {
       addFormOpen = !addFormOpen;
+      if (addFormOpen) reclubImportOpen = false;
       render();
       if (addFormOpen) document.querySelector('#add-player-form [name="name"]').focus();
       return;
     }
     if (action === "toggle-reclub-import") {
       reclubImportOpen = !reclubImportOpen;
+      if (reclubImportOpen) addFormOpen = false;
       render();
       if (reclubImportOpen) document.querySelector("#reclub-event-url").focus();
+      return;
+    }
+    if (action === "open-player-manager") {
+      rosterManagerOpen = true;
+      rosterManagerFilter = "all";
+      selectedPlayerIds.clear();
+      render();
+      document.querySelector(".roster-manager-close").focus();
+      return;
+    }
+    if (action === "close-player-manager" || action === "close-player-manager-backdrop") {
+      if (action === "close-player-manager-backdrop" && event.target !== button) return;
+      rosterManagerOpen = false;
+      selectedPlayerIds.clear();
+      render();
+      return;
+    }
+    if (action === "clear-player-selection") {
+      selectedPlayerIds.clear();
+      render();
+      document.querySelector('[data-action="clear-player-selection"]').focus();
+      return;
+    }
+    if (action === "bulk-rest" || action === "bulk-return" || action === "bulk-remove") {
+      await applyBulkPlayerAction(action);
       return;
     }
     let reportType = null;
@@ -813,7 +957,123 @@ async function changeAvailability(playerId, status) {
   return result.changed || result.requiresConfirmation;
 }
 
+async function applyBulkPlayerAction(action) {
+  const selected = session.players.filter((player) => selectedPlayerIds.has(player.id));
+  const playingIds = new Set(session.matches
+    .filter((match) => match.status === "inProgress")
+    .flatMap((match) => match.playerIds));
+  if (action === "bulk-rest") {
+    const targets = selected.filter((player) => player.status === "active" && !playingIds.has(player.id));
+    if (!targets.length) {
+      notice = "Select active players who are not currently playing to put them on break.";
+      render();
+      return;
+    }
+    const targetIds = new Set(targets.map((player) => player.id));
+    const queuedCount = session.matches.filter((match) =>
+      match.status === "proposed" && match.playerIds.some((id) => targetIds.has(id))).length;
+    if (queuedCount && !await requestConfirmation({
+      title: "Put selected players on break?",
+      message: `This will cancel ${queuedCount} queued ${plural(queuedCount, "match")} containing selected players.`,
+      confirmLabel: "Mark rest"
+    })) return;
+    targets.forEach((player) => setPlayerAvailability(session, player.id, "resting", { confirmRemoval: true }));
+    notice = `${targets.length} player${targets.length === 1 ? "" : "s"} marked as resting.`;
+  } else if (action === "bulk-return") {
+    const targets = selected.filter((player) => ["resting", "unavailable"].includes(player.status));
+    if (!targets.length) {
+      notice = "Select resting or unavailable players to return to the queue.";
+      render();
+      return;
+    }
+    targets.forEach((player) => setPlayerAvailability(session, player.id, "active"));
+    notice = `${targets.length} player${targets.length === 1 ? "" : "s"} returned to the queue.`;
+  } else {
+    const targets = selected.filter((player) => player.games === 0 && !playingIds.has(player.id));
+    if (!targets.length) {
+      notice = "Only players who have not played and are not currently on court can be removed.";
+      render();
+      return;
+    }
+    const skipped = selected.length - targets.length;
+    const targetIds = new Set(targets.map((player) => player.id));
+    const queuedCount = session.matches.filter((match) =>
+      match.status === "proposed" && match.playerIds.some((id) => targetIds.has(id))).length;
+    const details = [
+      `${targets.length} eligible ${plural(targets.length, "player")} will be removed.`,
+      skipped ? `${skipped} selected ${plural(skipped, "player")} with games played or currently on court will be skipped.` : "",
+      queuedCount ? `${queuedCount} queued ${plural(queuedCount, "match")} will also be cancelled.` : ""
+    ].filter(Boolean).join(" ");
+    if (!await requestConfirmation({
+      title: "Remove selected players?",
+      message: details,
+      confirmLabel: `Remove ${targets.length} ${plural(targets.length, "player")}`
+    })) return;
+    targets.forEach((player) => removePlayer(session, player.id, { confirmRemoval: true }));
+    notice = `Removed ${targets.length} player${targets.length === 1 ? "" : "s"}${skipped ? `; skipped ${skipped} who cannot be removed` : ""}.`;
+  }
+  selectedPlayerIds.clear();
+  persist();
+  render();
+}
+
+app.addEventListener("input", (event) => {
+  const search = event.target.closest("[data-roster-search]");
+  if (!search) return;
+
+  const searchArea = search.dataset.rosterSearch;
+  const selectionStart = search.selectionStart;
+  const selectionEnd = search.selectionEnd;
+  if (searchArea === "lineup") {
+    lineupSearch = search.value;
+    rosterPage = 0;
+  } else {
+    rosterManagerSearch = search.value;
+  }
+  render();
+  const updatedSearch = document.querySelector(`[data-roster-search="${searchArea}"]`);
+  updatedSearch?.focus();
+  if (Number.isInteger(selectionStart) && Number.isInteger(selectionEnd)) {
+    updatedSearch?.setSelectionRange(selectionStart, selectionEnd);
+  }
+});
+
 app.addEventListener("change", (event) => {
+  if (event.target.matches("[data-roster-filter]")) {
+    rosterManagerFilter = event.target.value;
+    render();
+    document.querySelector("[data-roster-filter]").focus();
+    return;
+  }
+  if (event.target.matches("[data-roster-player]")) {
+    const playerId = event.target.dataset.rosterPlayer;
+    if (event.target.checked) selectedPlayerIds.add(playerId);
+    else selectedPlayerIds.delete(playerId);
+    render();
+    [...document.querySelectorAll("[data-roster-player]")]
+      .find((checkbox) => checkbox.dataset.rosterPlayer === playerId)
+      ?.focus();
+    return;
+  }
+  if (event.target.matches("[data-select-visible]")) {
+    const playingIds = new Set(session.matches
+      .filter((match) => match.status === "inProgress")
+      .flatMap((match) => match.playerIds));
+    const proposedIds = new Set(session.matches
+      .filter((match) => match.status === "proposed")
+      .flatMap((match) => match.playerIds));
+    const pausedIds = new Set(session.matches
+      .filter((match) => match.status === "inProgress" && match.pausedAt)
+      .flatMap((match) => match.playerIds));
+    const visiblePlayers = searchPlayers(sortPlayersByName(session.players), rosterManagerSearch).filter((player) =>
+      rosterManagerFilter === "all" ||
+      managerPlayerStatus(player, playingIds, proposedIds, pausedIds) === rosterManagerFilter);
+    if (event.target.checked) visiblePlayers.forEach((player) => selectedPlayerIds.add(player.id));
+    else visiblePlayers.forEach((player) => selectedPlayerIds.delete(player.id));
+    render();
+    document.querySelector("[data-select-visible]").focus();
+    return;
+  }
   const setting = event.target.dataset.setting;
   if (!setting) return;
   try {

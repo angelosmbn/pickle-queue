@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f7f2">
     <title>PickleQueue ni Loyloy — Session manager</title>
-    <link rel="stylesheet" href="./styles.css?v=4">
+    <link rel="stylesheet" href="./styles.css?v=11">
   </head>
   <body>
     <main id="app" class="app-shell" aria-live="polite"></main>
@@ -116,6 +116,16 @@
             <h2>How did the session go?</h2>
           </div>
         </div>
+        <fieldset class="feedback-rating">
+          <legend>Rate this session (required)</legend>
+          <div class="feedback-stars" role="radiogroup" aria-label="Session rating">
+            <label class="feedback-star-option" title="1 star"><input type="radio" name="rating" value="1" required aria-label="1 star"><span aria-hidden="true">★</span></label>
+            <label class="feedback-star-option" title="2 stars"><input type="radio" name="rating" value="2" required aria-label="2 stars"><span aria-hidden="true">★</span></label>
+            <label class="feedback-star-option" title="3 stars"><input type="radio" name="rating" value="3" required aria-label="3 stars"><span aria-hidden="true">★</span></label>
+            <label class="feedback-star-option" title="4 stars"><input type="radio" name="rating" value="4" required aria-label="4 stars"><span aria-hidden="true">★</span></label>
+            <label class="feedback-star-option" title="5 stars"><input type="radio" name="rating" value="5" required aria-label="5 stars"><span aria-hidden="true">★</span></label>
+          </div>
+        </fieldset>
         <label class="field-label" for="session-feedback">Share your feedback (required)</label>
         <textarea id="session-feedback" name="feedback" class="text-input" rows="5" required minlength="3" maxlength="1500" placeholder="What worked well, and what could be improved?"></textarea>
         <p class="dialog-hint">Your feedback will be included in the final session email.</p>
@@ -139,6 +149,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./src/app.js"></script>
+    <script type="module" src="./src/app.js?v=5"></script>
   </body>
 </html>

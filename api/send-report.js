@@ -29,13 +29,16 @@ function escapeHtml(value) {
   })[character]);
 }
 
-function renderList(items) {
-  if (!items.length) {
-    return '<p style="margin:0;color:#64746b;font-size:14px;line-height:1.6">No entries yet.</p>';
-  }
-  return `<ul style="margin:0;padding:0;list-style:none">${items.map((item) =>
-    `<li style="padding:10px 12px;border-bottom:1px solid #e8eee9;color:#34453a;font-size:14px;line-height:1.5">${escapeHtml(item)}</li>`
-  ).join("")}</ul>`;
+function renderTable(headers, rows) {
+  const header = headers.map((label) =>
+    `<th align="left" style="padding:9px 10px;background:#f4f7f4;border-bottom:1px solid #e3eae4;color:#718076;font-size:11px;font-weight:700">${escapeHtml(label)}</th>`
+  ).join("");
+  const body = rows.length
+    ? rows.map((row) => `<tr>${row.map((cell) =>
+      `<td style="padding:9px 10px;border-bottom:1px solid #e8eee9;color:#34453a;font-size:12px;line-height:1.5;vertical-align:top">${escapeHtml(cell)}</td>`
+    ).join("")}</tr>`).join("")
+    : `<tr><td colspan="${headers.length}" style="padding:12px 10px;border-bottom:1px solid #e8eee9;color:#64746b;font-size:13px">No entries yet.</td></tr>`;
+  return `<table role="table" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">${headers.length ? `<thead><tr>${header}</tr></thead>` : ""}<tbody>${body}</tbody></table>`;
 }
 
 export function buildReportHtml(reportType, sessionName, report) {
@@ -48,24 +51,41 @@ export function buildReportHtml(reportType, sessionName, report) {
   const detailsEnd = firstSection.length ? Math.min(...firstSection) : lines.length;
   const details = lines.slice(1, detailsEnd)
     .map((line) => line.match(/^([^:]+):\s*(.*)$/))
-    .filter(Boolean);
-  const players = playerIndex >= 0
+    .filter(Boolean)
+    .map(([, label, value]) => [label, value]);
+  const playerLines = playerIndex >= 0
     ? lines.slice(playerIndex + 1, matchIndex >= 0 ? matchIndex : lines.length)
       .filter((line) => line.startsWith("- "))
-      .map((line) => line.slice(2))
     : [];
-  const matches = matchIndex >= 0
+  const players = playerLines.map((line) => {
+    const match = line.match(/^- (.+): (\d+) games, (\d+) wins, (\d+) losses, (.+) win rate$/);
+    return match
+      ? [match[1], match[2], match[3], match[4], match[5]]
+      : [line.slice(2), "—", "—", "—", "—"];
+  });
+  const matchLines = matchIndex >= 0
     ? lines.slice(matchIndex + 1, feedbackIndex >= 0 ? feedbackIndex : lines.length)
       .filter((line) => line.startsWith("- "))
-      .map((line) => line.slice(2))
     : [];
-  const feedback = feedbackIndex >= 0
+  const matches = matchLines.map((line) => {
+    const match = line.match(/^- (Game \d+) · ([^·:]+?)(?: · Court (\d+))?: (.+?) vs (.+?)(?: \((\d+)–(\d+)\))?$/);
+    if (!match) return [line.slice(2), "—", "—", "—"];
+    const [, game, status, court = "—", teamA, teamB, scoreA, scoreB] = match;
+    return [game, status.trim(), court, `${teamA} vs ${teamB}${scoreA && scoreB ? ` (${scoreA}–${scoreB})` : ""}`];
+  });
+  const feedbackLines = feedbackIndex >= 0
     ? lines.slice(feedbackIndex + 1).join("\n").trim()
     : "";
+  const rating = feedbackLines.match(/^Rating:\s*(Not provided|\d+\/5 stars)\s*(?:\r?\n|$)/m)?.[1] ?? "Not provided";
+  const feedback = feedbackLines.replace(/^Rating:\s*(?:Not provided|\d+\/5 stars)\s*(?:\r?\n|$)/m, "").trim();
   const isEnded = reportType === "ended";
   const detailRows = details.map(([label, value]) =>
-    `<tr><th align="left" style="width:38%;padding:9px 12px;border-bottom:1px solid #e8eee9;color:#718076;font-size:13px;font-weight:600">${escapeHtml(label)}</th><td style="padding:9px 12px;border-bottom:1px solid #e8eee9;color:#26372d;font-size:14px">${escapeHtml(value)}</td></tr>`
+    `<tr><th align="left" style="width:38%;padding:9px 12px;border-bottom:1px solid #e8eee9;color:#718076;font-size:12px;font-weight:600">${escapeHtml(label)}</th><td style="padding:9px 12px;border-bottom:1px solid #e8eee9;color:#26372d;font-size:13px">${escapeHtml(value)}</td></tr>`
   ).join("");
+  const playerTable = renderTable(["Player", "Games", "Wins", "Losses", "Win rate"], players);
+  const matchTable = renderTable(["Game", "Status", "Court", "Matchup / score"], matches);
+  const ratingValue = rating === "Not provided" ? "Not provided" : rating.replace("/5 stars", " / 5");
+  const starRating = rating === "Not provided" ? "" : `<span style="color:#d49a32;font-size:18px;letter-spacing:2px">${"★".repeat(Number.parseInt(rating, 10))}</span>`;
   const section = (title, content) =>
     `<tr><td style="padding:0 28px 22px"><h2 style="margin:0 0 10px;color:#24372b;font-size:16px;line-height:1.4">${title}</h2>${content}</td></tr>`;
 
@@ -83,9 +103,9 @@ export function buildReportHtml(reportType, sessionName, report) {
       <p style="margin:0 0 7px;color:#718076;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase">Session details</p>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0">${detailRows}</table>
     </td></tr>
-    ${playerIndex >= 0 ? section("Player statistics", renderList(players)) : ""}
-    ${matchIndex >= 0 ? section("Match history", renderList(matches)) : ""}
-    ${feedbackIndex >= 0 ? section("Organizer feedback", `<p style="margin:0;padding:13px 15px;border-radius:8px;background:#f3f7f3;color:#34453a;font-size:14px;line-height:1.6;white-space:pre-wrap">${escapeHtml(feedback || "Not submitted.")}</p>`) : ""}
+    ${playerIndex >= 0 ? section("Player statistics", playerTable) : ""}
+    ${matchIndex >= 0 ? section("Match history", matchTable) : ""}
+    ${feedbackIndex >= 0 ? section("Organizer feedback", `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:10px;border:1px solid #e3eae4;border-radius:8px;background:#f8faf8"><tr><th align="left" style="width:34%;padding:11px 13px;color:#718076;font-size:12px;font-weight:600">Session rating</th><td style="padding:11px 13px;color:#26372d;font-size:13px;font-weight:700">${starRating}<span style="padding-left:8px;vertical-align:3px">${escapeHtml(ratingValue)}</span></td></tr></table><p style="margin:0;padding:13px 15px;border-radius:8px;background:#f3f7f3;color:#34453a;font-size:14px;line-height:1.6;white-space:pre-wrap">${escapeHtml(feedback || "No written feedback provided.")}</p>`) : ""}
     <tr><td style="padding:17px 28px;border-top:1px solid #e8eee9;background:#fafcfb;color:#87938b;font-size:11px;line-height:1.5">Automatically generated by PickleQueue ni Loyloy.</td></tr>
   </table>
 </body>

@@ -66,29 +66,29 @@ function request(eventUrl, { ip = "198.51.100.10", method = "POST" } = {}) {
   };
 }
 
-test("Reclub parser imports paid active players only", () => {
+test("Reclub parser imports confirmed players regardless of payment and excludes nonconfirmed players", () => {
   const html = eventHtml("7E2ZJD", [
-    { userId: 1, name: "Confirmed Player" },
-    { userId: 2, name: "Unpaid Player", tag: "unpaid" },
-    { userId: 3, name: "Waitlisted Player", status: 2 },
-    { userId: 4, name: "Cancelled Player", status: -1 }
+    { userId: 1, name: "Paid Confirmed Player", tag: "paid" },
+    { userId: 2, name: "Unpaid Confirmed Player", tag: "unpaid" },
+    { userId: 3, name: "Waitlisted Player", status: 2, tag: "unpaid" },
+    { userId: 4, name: "Cancelled Player", status: -1, tag: "unpaid" }
   ]);
 
-  assert.deepEqual(parseConfirmedPlayers(html, "7E2ZJD"), ["Confirmed Player"]);
+  assert.deepEqual(parseConfirmedPlayers(html, "7E2ZJD"), ["Paid Confirmed Player", "Unpaid Confirmed Player"]);
 });
 
-test("Reclub parser uses a paid plus-one guest name instead of the host name", () => {
+test("Reclub parser uses a plus-one guest name instead of the host name", () => {
   const html = eventHtml("7E2ZJD", [
     { userId: 1, name: "Host Player", guestName: "Sy" },
     { userId: 2, name: "Unpaid Host", guestName: "Guest Name", tag: "unpaid" }
   ]);
 
-  assert.deepEqual(parseConfirmedPlayers(html, "7E2ZJD"), ["Sy"]);
+  assert.deepEqual(parseConfirmedPlayers(html, "7E2ZJD"), ["Sy", "Guest Name"]);
 });
 
 test("Reclub parser reports missing or empty public roster data", () => {
   assert.throws(() => parseConfirmedPlayers("<html></html>", "7E2ZJD"), /did not include public event data/);
-  assert.throws(() => parseConfirmedPlayers(eventHtml("7E2ZJD", [{ userId: 1, name: "Waiting", tag: "unpaid" }]), "7E2ZJD"), /No confirmed paid players/);
+  assert.throws(() => parseConfirmedPlayers(eventHtml("7E2ZJD", [{ userId: 1, name: "Waiting", status: 2, tag: "unpaid" }]), "7E2ZJD"), /No confirmed players/);
 });
 
 test("Reclub endpoint accepts POST only", async () => {
@@ -118,14 +118,15 @@ test("Reclub endpoint fetches a public event and returns only confirmed names", 
     assert.equal(options.redirect, "manual");
     return new Response(eventHtml("7E2ZJD", [
       { userId: 1, name: "Paid Player" },
-      { userId: 2, name: "Unpaid Player", tag: "unpaid" }
+      { userId: 2, name: "Unpaid Player", tag: "unpaid" },
+      { userId: 3, name: "Waitlisted Player", status: 2, tag: "unpaid" }
     ]), { status: 200, headers: { "content-type": "text/html" } });
   };
   try {
     const res = responseRecorder();
     await handler(request("https://reclub.co/m/7E2ZJD", { ip: "198.51.100.11" }), res);
     assert.equal(res.statusCode, 200);
-    assert.deepEqual(res.payload, { players: ["Paid Player"] });
+    assert.deepEqual(res.payload, { players: ["Paid Player", "Unpaid Player"] });
   } finally {
     globalThis.fetch = originalFetch;
   }

@@ -6,7 +6,8 @@ A local-first pickleball session manager for a single organizer. Run `npm start`
 
 - Draft, active, paused, and completed session states.
 - Singles and doubles, a configurable court count, player skill levels, breaks, and availability.
-- Public Reclub event import for confirmed, paid players; imported players start at Intermediate and on break.
+- Public Reclub event import for all confirmed players, regardless of payment; imported players start at Intermediate and on break.
+- A floating all-player manager with status filters and bulk rest, return, and removal actions.
 - Unique player names, checked case-insensitively when adding or editing players.
 - Four matching strategies, deterministic scoring, court-aware simultaneous match selection, fairness explanations, and soft skill-gap warnings.
 - Organizer-created custom matches, queued-match editing, automatic player exchanges, plus pause/resume and stop-to-queue controls.
@@ -14,9 +15,11 @@ A local-first pickleball session manager for a single organizer. Run `npm start`
 - A live elapsed-time timer on every in-progress game.
 - Match cards with player skill levels and session win rates, plus waiting cards that exclude reserved and playing players.
 - Browser `localStorage` persistence, so a refresh on the same browser/device keeps the session.
-- Gmail session reports sent at session start and end through a Vercel serverless function, plus a thank-you email to the organizer after feedback is submitted.
+- Required session feedback with a 1–5 star rating, included in the final Gmail report sent through a Vercel serverless function, plus a thank-you email to the organizer.
 
-Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads only paid participants and their public display names from the event page; it does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. Resting players count toward the minimum to start a session and are returned to the active queue when the session starts. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
+Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads confirmed participants and their public display names regardless of payment status; waitlisted and cancelled participants are excluded. It does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. Resting players count toward the minimum to start a session and are returned to the active queue when the session starts. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
+
+Use the lineup search beside **View all players** to find a player by name. Choose **View all players** to open the floating manager, where search can be combined with active, queued, playing, paused, resting, or unavailable status filters. Select visible players individually or together and bulk mark them resting, return them to the queue, or remove eligible players. Players with completed games or currently on court cannot be removed. Removing players or changing the status of queued players cancels affected queued matches after confirmation.
 
 ## How matching works
 
@@ -38,7 +41,7 @@ Session data stays in the browser's local storage on this device. It does not sy
 
 ## Email reports on Vercel
 
-The setup asks for the organizer's name, contact number, email address, and court/venue name before a session can start; club name is optional. When deployed to Vercel, the app emails a formatted session report when a session starts and ends. The report includes organizer contact details, court/venue, session settings, player statistics, and match history. After ending, the organizer must submit feedback before the final report is emailed; a separate thank-you email is sent to the organizer's required email address. If delivery fails, the session remains saved and the app displays an error.
+The setup asks for the organizer's name, contact number, email address, and court/venue name before a session can start; club name is optional. When deployed to Vercel, the app emails a formatted session report when a session starts and ends. The report includes organizer contact details, court/venue, session settings, tabular player statistics and match history, and the organizer's feedback with its star rating. After ending, the organizer must submit feedback before the final report is emailed; a separate thank-you email is sent to the organizer's required email address. If delivery fails, the session remains saved and the app displays an error.
 
 Before deploying, add these environment variables in the Vercel project settings (for Production, and Preview if needed):
 

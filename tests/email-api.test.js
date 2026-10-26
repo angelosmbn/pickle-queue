@@ -27,6 +27,7 @@ test("HTML report email renders a formatted summary and escapes user-provided co
     "- Game 1 · Completed · Court 1: Casey + Alex vs Sam + Jo (11–8)",
     "",
     "Organizer feedback:",
+    "Rating: 5/5 stars",
     "Great session!"
   ].join("\n"));
 
@@ -35,8 +36,15 @@ test("HTML report email renders a formatted summary and escapes user-provided co
   assert.match(html, /Player statistics/);
   assert.match(html, /Match history/);
   assert.match(html, /Organizer feedback/);
+  assert.match(html, /Session rating/);
+  assert.match(html, /5 \/ 5/);
+  assert.match(html, /★★★★★/);
+  assert.match(html, /<th[^>]*>Games<\/th>/);
+  assert.match(html, /<th[^>]*>Win rate<\/th>/);
+  assert.match(html, /<th[^>]*>Matchup \/ score<\/th>/);
   assert.match(html, /Club &lt;script&gt;/);
   assert.match(html, /Alex &amp; Sam/);
+  assert.match(html, /<th[^>]*>Organizer<\/th><td[^>]*>Alex &amp; Sam<\/td>/);
   assert.match(html, /Casey &lt;b&gt;Player&lt;\/b&gt;/);
   assert.doesNotMatch(html, /<script>|<b>Player<\/b>/);
 });
