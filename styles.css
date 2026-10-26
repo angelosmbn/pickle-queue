@@ -364,8 +364,7 @@ td strong { color: #34473b; }
   .toast-notification { top: max(8px, env(safe-area-inset-top)); width: calc(100vw - 24px); max-width: calc(100vw - 24px); padding: 12px; }
   .toast-message { font-size: 12px; }
   .form-validation-message { gap: 8px; padding: 10px; font-size: 11px; }
-  .session-date-courts-grid { grid-template-columns: minmax(0, 1fr); }
-  #session-date { height: 44px; font-size: 16px; }
+  .session-date-courts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { height: 58px; padding: 0 16px; }
   .brand { gap: 8px; font-size: 15px; }
   .save-status { font-size: 0; }
