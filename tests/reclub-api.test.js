@@ -11,13 +11,14 @@ function eventHtml(code, participants) {
   const participantReferences = [];
   const users = {};
 
-  participants.forEach(({ userId, name, status = 1, tag = "paid" }) => {
+  participants.forEach(({ userId, name, status = 1, tag = "paid", guestName = null }) => {
     const tagReference = add(tag);
     const tagsReference = add([tagReference]);
     const participantReference = add({
       status: add(status),
       tags: tagsReference,
-      referenceId: add(userId)
+      referenceId: add(userId),
+      externalReference: guestName ? add({ name: add(guestName) }) : add(null)
     });
     const profileReference = add({ name: add(name) });
     participantReferences.push(participantReference);
@@ -74,6 +75,15 @@ test("Reclub parser imports paid active players only", () => {
   ]);
 
   assert.deepEqual(parseConfirmedPlayers(html, "7E2ZJD"), ["Confirmed Player"]);
+});
+
+test("Reclub parser uses a paid plus-one guest name instead of the host name", () => {
+  const html = eventHtml("7E2ZJD", [
+    { userId: 1, name: "Host Player", guestName: "Sy" },
+    { userId: 2, name: "Unpaid Host", guestName: "Guest Name", tag: "unpaid" }
+  ]);
+
+  assert.deepEqual(parseConfirmedPlayers(html, "7E2ZJD"), ["Sy"]);
 });
 
 test("Reclub parser reports missing or empty public roster data", () => {

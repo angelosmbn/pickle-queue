@@ -68,11 +68,16 @@ export function parseConfirmedPlayers(html, eventCode) {
     if (status !== 1 || !Array.isArray(tags) ||
         !tags.some((tag) => resolveNode(nodes, tag) === "paid")) continue;
 
-    const userId = propertyValue(nodes, participant, "referenceId");
-    const profileReference = users[String(userId)];
-    if (!Number.isInteger(profileReference)) continue;
-    const profile = resolveNode(nodes, profileReference);
-    const name = propertyValue(nodes, profile, "name");
+    const externalReference = propertyValue(nodes, participant, "externalReference");
+    const guestName = propertyValue(nodes, externalReference, "name");
+    let name = typeof guestName === "string" ? guestName.trim() : "";
+    if (!name) {
+      const userId = propertyValue(nodes, participant, "referenceId");
+      const profileReference = users[String(userId)];
+      if (!Number.isInteger(profileReference)) continue;
+      const profile = resolveNode(nodes, profileReference);
+      name = propertyValue(nodes, profile, "name");
+    }
     if (typeof name === "string" && name.trim()) names.push(name.trim());
   }
 
