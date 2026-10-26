@@ -6,12 +6,14 @@ A local-first pickleball session manager for a single organizer. Serve `index.ht
 
 - Draft, active, paused, and completed session states.
 - Singles and doubles, a configurable court count, player skill levels, breaks, and availability.
+- Unique player names, checked case-insensitively when adding or editing players.
 - Four matching strategies, deterministic scoring, court-aware simultaneous match selection, fairness explanations, and soft skill-gap warnings.
 - Organizer-created custom matches, queued-match editing, automatic player exchanges, plus pause/resume and stop-to-queue controls.
 - Configurable score targets and optional deuce (win-by-two) validation, score correction with statistic recalculation, automatic stats, a minimum-games leaderboard, and completed-game history.
 - A live elapsed-time timer on every in-progress game.
 - Match cards with player skill levels and session win rates, plus waiting cards that exclude reserved and playing players.
 - Browser `localStorage` persistence, so a refresh on the same browser/device keeps the session.
+- Optional Gmail session reports sent at session start and end through a Vercel serverless function.
 
 ## How matching works
 
@@ -29,8 +31,22 @@ This is an explainable heuristic for recreational play, not a fairness guarantee
 
 ## Persistence limitations
 
-Session data stays in the browser's local storage on this device. It does not sync with other organizers or devices, and clearing browser data can erase the session. There is no backend, account system, or cross-device recovery.
+Session data stays in the browser's local storage on this device. It does not sync with other organizers or devices, and clearing browser data can erase the session. There is no shared session database, account system, or cross-device recovery; the Vercel function only sends the report supplied by the organizer.
+
+## Email reports on Vercel
+
+The setup asks for the organizer's name, contact number, and court/venue name before a session can start; club name is optional. When deployed to Vercel, the app emails a plain-text report when a session starts and ends. The report includes organizer contact details, court/venue, session settings, player statistics, and match history. After ending, the organizer must submit feedback before the final report is emailed. A report can also be sent manually with **Email update** or **Email final report**. If delivery fails, the session remains saved and the app displays an error; use the email button to retry.
+
+Before deploying, add these environment variables in the Vercel project settings (for Production, and Preview if needed):
+
+- `GMAIL_USER`: the Gmail address used to send reports.
+- `GMAIL_APP_PASSWORD`: the Google App Password. Keep it in Vercel only; never add it to frontend code or commit it.
+- `REPORT_TO_EMAIL`: the inbox that receives the reports.
+
+The report endpoint does not prompt for an access code. It sends only to the fixed `REPORT_TO_EMAIL`, rejects cross-origin requests, and applies a best-effort per-instance request limit. Because the endpoint is public and Vercel functions can scale across instances, this limit is not strong authentication or a guaranteed global quota. For a private deployment, enable Vercel Deployment Protection or add user authentication before using it broadly. Organizer contact details, player names, results, and feedback are sent in email, so tell participants how this information will be used.
+
+After setting the variables, redeploy the Vercel project. The `api/send-report.js` function is available on Vercel; the plain local static server (`npm start`) does not run serverless API functions. To test email sending locally, run the project with the Vercel CLI (`vercel dev`) and provide the email environment variables in the local Vercel environment. If a Gmail address or App Password is changed, update the matching Vercel environment variable and redeploy.
 
 ## Tests
 
-`npm test` runs the domain test suite using Node's built-in test runner; no package installation is required.
+`npm test` runs the domain and email-endpoint tests using Node's built-in test runner.

@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#f5f7f2">
+    <title>PickleQueue ni Loyloy — Session manager</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <main id="app" class="app-shell" aria-live="polite"></main>
+    <dialog id="result-dialog" class="result-dialog">
+      <form id="result-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">FINISH GAME</p>
+            <h2 id="result-title">Record result</h2>
+          </div>
+          <button type="button" class="icon-button" data-action="close-result" aria-label="Close">×</button>
+        </div>
+        <input type="hidden" name="matchId">
+        <div class="score-fields">
+          <label class="field-label" for="score-a">Team A score</label>
+          <input id="score-a" name="scoreA" class="text-input" type="number" min="0" step="1" required>
+          <label class="field-label" for="score-b">Team B score</label>
+          <input id="score-b" name="scoreB" class="text-input" type="number" min="0" step="1" required>
+        </div>
+        <p class="dialog-hint" id="score-rules"></p>
+        <div class="dialog-actions">
+          <button type="button" class="button button-quiet" data-action="close-result">Cancel</button>
+          <button type="submit" class="button button-primary">Save result</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="match-dialog" class="result-dialog">
+      <form id="match-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow" id="match-dialog-eyebrow">MATCH SETUP</p>
+            <h2 id="match-dialog-title">Create custom match</h2>
+          </div>
+          <button type="button" class="icon-button" data-action="close-match" aria-label="Close">×</button>
+        </div>
+        <input type="hidden" name="matchId">
+        <div id="match-player-fields"></div>
+        <p id="match-fairness" class="dialog-hint"></p>
+        <div class="dialog-actions">
+          <button type="button" class="button button-quiet" data-action="close-match">Cancel</button>
+          <button type="submit" class="button button-primary">Queue match</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="player-dialog" class="player-dialog">
+      <form id="player-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">PLAYER PROFILE</p>
+            <h2>Edit player</h2>
+          </div>
+          <button type="button" class="icon-button" data-action="close-player" aria-label="Close">×</button>
+        </div>
+        <input type="hidden" name="playerId">
+        <div class="player-preview">
+          <span id="player-preview-avatar" class="avatar avatar-3">?</span>
+          <span><strong id="player-preview-name">Player name</strong><small id="player-preview-skill">Intermediate</small></span>
+        </div>
+        <label class="player-edit-label" for="player-edit-name">Player name</label>
+        <input id="player-edit-name" class="text-input player-name-input" name="name" required maxlength="50" autocomplete="off" placeholder="Enter player name">
+        <fieldset class="skill-picker">
+          <legend>Skill level</legend>
+          <div class="skill-options">
+            <label class="skill-option"><input type="radio" name="skill" value="1"><span><b>1</b><strong>Beginner</strong></span></label>
+            <label class="skill-option"><input type="radio" name="skill" value="2"><span><b>2</b><strong>Novice</strong></span></label>
+            <label class="skill-option"><input type="radio" name="skill" value="3"><span><b>3</b><strong>Intermediate</strong></span></label>
+            <label class="skill-option"><input type="radio" name="skill" value="4"><span><b>4</b><strong>Advanced</strong></span></label>
+            <label class="skill-option"><input type="radio" name="skill" value="5"><span><b>5</b><strong>Expert</strong></span></label>
+          </div>
+        </fieldset>
+        <p id="player-edit-error" class="dialog-hint" role="alert"></p>
+        <div class="dialog-actions">
+          <button type="button" class="button button-quiet" data-action="close-player">Cancel</button>
+          <button type="submit" class="button button-primary">Save changes</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="organizer-dialog" class="result-dialog">
+      <form id="organizer-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">ORGANIZER DETAILS</p>
+            <h2>Your contact information</h2>
+          </div>
+        </div>
+        <label class="field-label" for="organizer-dialog-name">Your name</label>
+        <input id="organizer-dialog-name" name="name" class="text-input" required maxlength="70" autocomplete="name">
+        <label class="field-label" for="organizer-dialog-contact">Contact number</label>
+        <input id="organizer-dialog-contact" name="contactNumber" class="text-input" type="tel" required minlength="7" maxlength="25" autocomplete="tel">
+        <label class="field-label" for="organizer-dialog-club">Club name <span class="muted">(optional)</span></label>
+        <input id="organizer-dialog-club" name="clubName" class="text-input" maxlength="80" autocomplete="organization">
+        <label class="field-label" for="organizer-dialog-court">Court / venue name</label>
+        <input id="organizer-dialog-court" name="courtName" class="text-input" required maxlength="80" autocomplete="off">
+        <p class="dialog-hint">These details will be included in session emails.</p>
+        <div class="dialog-actions">
+          <button type="button" class="button button-quiet" data-action="cancel-organizer">Cancel</button>
+          <button type="submit" class="button button-primary">Save details</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="feedback-dialog" class="result-dialog">
+      <form id="feedback-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow">SESSION FEEDBACK</p>
+            <h2>How did the session go?</h2>
+          </div>
+        </div>
+        <label class="field-label" for="session-feedback">Share your feedback (required)</label>
+        <textarea id="session-feedback" name="feedback" class="text-input" rows="5" required minlength="3" maxlength="1500" placeholder="What worked well, and what could be improved?"></textarea>
+        <p class="dialog-hint">Your feedback will be included in the final session email.</p>
+        <div class="dialog-actions">
+          <button type="submit" class="button button-primary">Submit feedback</button>
+        </div>
+      </form>
+    </dialog>
+    <script type="module" src="./src/app.js"></script>
+  </body>
+</html>
