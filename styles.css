@@ -261,7 +261,10 @@ td strong { color: #34473b; }
 .setup-card { width: min(100%, 440px); padding: 23px; border: 1px solid #e5eae4; border-radius: 13px; background: #fff; box-shadow: 0 8px 32px #304b3310; }
 .setup-card .field-label { display: block; margin: 0 0 7px; color: #47594d; font-size: 11px; font-weight: 700; }
 .setup-card .text-input { margin-bottom: 13px; }
-.form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 11px; }
+.form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
+.form-grid > div { min-width: 0; }
+.form-grid .text-input { width: 100%; min-width: 0; max-width: 100%; }
+.form-grid input[type="date"] { display: block; min-width: 0; width: 100%; max-width: 100%; padding-inline: 8px; font-size: 16px; }
 .form-divider { width: 100%; margin: 4px 0 17px; border: 0; border-top: 1px solid #edf1ec; }
 .privacy-note { margin: 12px 0 0; color: #9aa49d; text-align: center; font-size: 9px; }
 .result-dialog { width: min(450px, calc(100vw - 30px)); padding: 22px; border: 0; border-radius: 14px; box-shadow: 0 15px 50px #203b2930; color: var(--ink); }
