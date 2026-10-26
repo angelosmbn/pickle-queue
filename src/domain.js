@@ -48,10 +48,12 @@ const STRATEGY_NAMES = {
 
 export function createSession({
   name, date = "", notes = "", courts = 1, format = "doubles", strategy = "fair",
-  organizerName = "", contactNumber = "", clubName = "", courtName = ""
+  organizerName = "", contactNumber = "", organizerEmail = "", clubName = "", courtName = ""
 }) {
   const cleanName = String(name ?? "").trim();
   if (!cleanName) throw new Error("Enter a session name.");
+  const cleanOrganizerEmail = String(organizerEmail ?? "").trim();
+  if (!isValidEmail(cleanOrganizerEmail)) throw new Error("Enter a valid organizer email address.");
   const courtCount = Number(courts);
   if (!Number.isInteger(courtCount) || courtCount < 1 || courtCount > 12) {
     throw new Error("Choose between 1 and 12 courts.");
@@ -68,6 +70,7 @@ export function createSession({
     organizer: {
       name: String(organizerName).trim(),
       contactNumber: String(contactNumber).trim(),
+      email: cleanOrganizerEmail,
       clubName: String(clubName).trim()
     },
     courts: courtCount,
@@ -81,20 +84,27 @@ export function createSession({
   };
 }
 
-export function updateOrganizerDetails(session, { name, contactNumber, clubName = "", courtName }) {
+export function updateOrganizerDetails(session, { name, contactNumber, email, clubName = "", courtName }) {
   const cleanName = String(name ?? "").trim();
   const cleanContact = String(contactNumber ?? "").trim();
+  const cleanEmail = String(email ?? "").trim();
   const cleanCourtName = String(courtName ?? "").trim();
   if (!cleanName) throw new Error("Enter your name.");
   if (!cleanContact) throw new Error("Enter your contact number.");
+  if (!isValidEmail(cleanEmail)) throw new Error("Enter a valid email address.");
   if (!cleanCourtName) throw new Error("Enter a court name.");
   session.courtName = cleanCourtName;
   session.organizer = {
     name: cleanName,
     contactNumber: cleanContact,
+    email: cleanEmail,
     clubName: String(clubName ?? "").trim()
   };
   return session.organizer;
+}
+
+function isValidEmail(email) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
 export function addPlayer(session, { name, skill = 3 }) {
@@ -102,7 +112,7 @@ export function addPlayer(session, { name, skill = 3 }) {
   const rating = Number(skill);
   if (!cleanName) throw new Error("Enter a player name.");
   if (session.players.some((player) => playerNameKey(player.name) === playerNameKey(cleanName))) {
-    throw new Error("A player with that name already exists.");
+    throw new Error("That player name is already added. Choose a different name.");
   }
   if (!Number.isInteger(rating) || rating < 1 || rating > 5) throw new Error("Choose a skill level.");
   const player = {
@@ -122,6 +132,40 @@ export function addPlayer(session, { name, skill = 3 }) {
   };
   session.players.push(player);
   return player;
+}
+
+export function importRestingPlayers(session, names) {
+  if (session.status === "completed") throw new Error("Players cannot be imported after the session has ended.");
+  if (!Array.isArray(names) || names.length === 0 || names.length > 500) {
+    throw new Error("The player import must contain between 1 and 500 names.");
+  }
+
+  const cleanNames = names.map((value) => {
+    if (typeof value !== "string") throw new Error("Every imported player must have a name.");
+    const cleanName = value.trim().replace(/\s+/g, " ");
+    if (!cleanName) throw new Error("Every imported player must have a name.");
+    return cleanName;
+  });
+  const reservedNames = new Set(cleanNames.map(playerNameKey));
+  const usedNames = new Set(session.players.map((player) => playerNameKey(player.name)));
+  const uniqueNames = cleanNames.map((cleanName) => {
+    let suffix = 1;
+    let candidate = cleanName.slice(0, 50);
+    while (usedNames.has(playerNameKey(candidate)) ||
+        (suffix > 1 && reservedNames.has(playerNameKey(candidate)))) {
+      suffix += 1;
+      const ending = ` (${suffix})`;
+      candidate = `${cleanName.slice(0, 50 - ending.length).trimEnd()}${ending}`;
+    }
+    usedNames.add(playerNameKey(candidate));
+    return candidate;
+  });
+
+  return uniqueNames.map((name) => {
+    const player = addPlayer(session, { name, skill: 3 });
+    setPlayerAvailability(session, player.id, "resting");
+    return player;
+  });
 }
 
 export function startSession(session) {
@@ -193,7 +237,7 @@ export function updatePlayer(session, playerId, changes) {
     const name = String(changes.name).trim();
     if (!name) throw new Error("Player name cannot be blank.");
     if (session.players.some((entry) => entry.id !== playerId && playerNameKey(entry.name) === playerNameKey(name))) {
-      throw new Error("A player with that name already exists.");
+      throw new Error("That player name is already added. Choose a different name.");
     }
     player.name = name;
   }
@@ -210,15 +254,20 @@ export function generateMatches(session, now = Date.now()) {
   const occupied = session.matches
     .filter((match) => ["proposed", "inProgress"].includes(match.status))
     .flatMap((match) => match.playerIds);
-  const players = session.players.filter((player) => {
-    if (player.status !== "active" || occupied.includes(player.id)) return false;
-    const consecutiveLimit = session.settings.allowConsecutiveGames
-      ? session.settings.restAfterConsecutiveGames
-      : 1;
-    return player.consecutive < consecutiveLimit;
-  });
+  const availablePlayers = session.players.filter((player) =>
+    player.status === "active" && !occupied.includes(player.id));
+  const consecutiveLimit = session.settings.allowConsecutiveGames
+    ? session.settings.restAfterConsecutiveGames
+    : 1;
+  let players = availablePlayers.filter((player) => player.consecutive < consecutiveLimit);
   const courtSlots = Math.max(0, session.courts - session.matches.filter((match) => ["proposed", "inProgress"].includes(match.status)).length);
-  const gameSlots = Math.min(courtSlots, Math.floor(players.length / groupSize));
+  let gameSlots = Math.min(courtSlots, Math.floor(players.length / groupSize));
+  let forcedPastRestLimit = false;
+  if (!gameSlots && courtSlots > 0 && availablePlayers.length >= groupSize) {
+    players = availablePlayers;
+    gameSlots = Math.min(courtSlots, Math.floor(players.length / groupSize));
+    forcedPastRestLimit = true;
+  }
   if (!gameSlots) {
     const proposedCount = session.matches.filter((match) => match.status === "proposed").length;
     const message = courtSlots === 0 && proposedCount > 0
@@ -230,15 +279,31 @@ export function generateMatches(session, now = Date.now()) {
   }
 
   const candidates = makeCandidates(players, session, now);
-  const selection = chooseSet(candidates, gameSlots);
-  const usedCourts = new Set(session.matches.filter((match) => ["proposed", "inProgress"].includes(match.status)).map((match) => match.court));
+  const defaultSelection = chooseSet(candidates, gameSlots);
+  const removedMatch = session.matches.slice().reverse().find((match) =>
+    match.kind === "generated" && match.removedAt);
+  let selection = defaultSelection;
+  if (removedMatch) {
+    const previousIds = new Set(removedMatch.playerIds);
+    const alternativeGroups = candidates.filter((candidate) =>
+      candidate.ids.some((id) => !previousIds.has(id)));
+    const alternativeCandidates = alternativeGroups.length
+      ? alternativeGroups
+      : candidates.filter((candidate) => teamSignature(candidate.teams) !== teamSignature(removedMatch.teams));
+    const shuffledCandidates = alternativeCandidates.map((candidate) => ({
+      ...candidate,
+      score: candidate.score + candidate.ids.filter((id) => !previousIds.has(id)).length * 0.02
+    })).sort((a, b) => b.score - a.score ||
+      a.ids.join(",").localeCompare(b.ids.join(",")) ||
+      teamSignature(a.teams).localeCompare(teamSignature(b.teams)));
+    const alternativeSelection = chooseSet(shuffledCandidates, gameSlots);
+    if (alternativeSelection.length >= defaultSelection.length) selection = alternativeSelection;
+  }
   const generated = selection.map((candidate) => {
-    const court = Array.from({ length: session.courts }, (_, index) => index + 1).find((number) => !usedCourts.has(number));
-    usedCourts.add(court);
     const skillAtMatch = Object.fromEntries(candidate.ids.map((id) => [id, getPlayer(session, id).skill]));
     const match = {
       id: makeId("match"),
-      court: null,
+      court: nextCourt(session),
       playerIds: candidate.ids,
       teams: candidate.teams,
       kind: "generated",
@@ -250,16 +315,23 @@ export function generateMatches(session, now = Date.now()) {
       winnerTeam: null,
       score: "",
       warning: candidate.warning,
-      reason: candidate.reason
+      reason: forcedPastRestLimit
+        ? `${candidate.reason} Played despite the rest limit because no rested match was available.`
+        : candidate.reason
     };
     session.matches.push(match);
     return match;
   });
+  if (generated.length && removedMatch) removedMatch.removedAt = null;
   return {
     matches: generated,
     message: generated.length < gameSlots ? "Could not fill every open court without repeating a player." : "",
     considered: candidates.length
   };
+}
+
+function teamSignature(teams) {
+  return teams.map((team) => [...team].sort().join("|")).sort().join("||");
 }
 
 export function startMatch(session, matchId) {
@@ -281,11 +353,17 @@ export function startMatch(session, matchId) {
     throw new Error("A player is reserved for another queued match.");
   }
   if (match.playerIds.some((id) => getPlayer(session, id).status !== "active")) {
-    throw new Error("A player is no longer available. Regenerate the proposed match.");
+    throw new Error("A player is no longer available. Remove this match and generate a replacement.");
   }
-  const occupiedCourts = new Set(activeMatches.map((entry) => entry.court));
-  match.court = Array.from({ length: session.courts }, (_, index) => index + 1).find((court) => !occupiedCourts.has(court));
-  if (!match.court) throw new Error("No court is available to start this match.");
+  const reservedCourts = new Set(session.matches
+    .filter((entry) => entry.id !== match.id && ["proposed", "inProgress"].includes(entry.status))
+    .map((entry) => entry.court));
+  if (!Number.isInteger(match.court) || match.court < 1 || match.court > session.courts ||
+      activeMatches.some((entry) => entry.court === match.court)) {
+    match.court = Array.from({ length: session.courts }, (_, index) => index + 1)
+      .find((court) => !reservedCourts.has(court));
+  }
+  if (!match.court) throw new Error("No court is available for this queued match.");
   match.status = "inProgress";
   match.startedAt = new Date().toISOString();
   match.pausedAt = null;
@@ -322,7 +400,6 @@ export function stopMatch(session, matchId) {
   const match = getMatch(session, matchId);
   if (match.status !== "inProgress") throw new Error("Only an in-progress game can be returned to the queue.");
   match.status = "proposed";
-  match.court = null;
   match.startedAt = null;
   match.pausedAt = null;
   match.totalPausedMs = 0;
@@ -389,6 +466,7 @@ export function cancelProposedMatch(session, matchId) {
   const match = getMatch(session, matchId);
   if (match.status !== "proposed") throw new Error("Only proposed matches can be cancelled.");
   match.status = "cancelled";
+  if (match.kind === "generated") match.removedAt = new Date().toISOString();
 }
 
 export function createCustomMatch(session, teams) {
@@ -433,7 +511,7 @@ export function createCustomMatch(session, teams) {
   }
   const candidate = evaluateTeams(session, teams);
   const match = {
-    id: makeId("match"), court: null, playerIds: ids, teams: teams.map((team) => [...team]),
+    id: makeId("match"), court: nextCourt(session), playerIds: ids, teams: teams.map((team) => [...team]),
     kind: "custom", skillAtMatch: Object.fromEntries(ids.map((id) => [id, getPlayer(session, id).skill])),
     status: "proposed", createdAt: new Date().toISOString(), startedAt: null, completedAt: null,
     winnerTeam: null, score: "", scoreA: null, scoreB: null, warning: candidate.warning, reason: "Custom matchup set by organizer."
@@ -446,6 +524,14 @@ export function createCustomMatch(session, teams) {
   });
   session.matches.push(match);
   return match;
+}
+
+function nextCourt(session) {
+  const reservedCourts = new Set(session.matches
+    .filter((match) => ["proposed", "inProgress"].includes(match.status))
+    .map((match) => match.court));
+  return Array.from({ length: session.courts }, (_, index) => index + 1)
+    .find((court) => !reservedCourts.has(court)) ?? 1;
 }
 
 export function editQueuedMatch(session, matchId, teams) {

@@ -1,5 +1,5 @@
 import {
-  addPlayer, cancelProposedMatch, createCustomMatch, createSession, editQueuedMatch, endSession, generateMatches, getStatistics,
+  addPlayer, cancelProposedMatch, createCustomMatch, createSession, editQueuedMatch, endSession, generateMatches, getStatistics, importRestingPlayers,
   editCompletedScore, getStrategyName, pauseSession, pauseMatch, recordResultAndGenerate, removePlayer, resumeMatch, resumeSession, setPlayerAvailability, stopMatch,
   skillName, startMatch, startSession, updateOrganizerDetails, updatePlayer, SKILLS, matchFairness
 } from "./domain.js";
@@ -16,10 +16,22 @@ const organizerDialog = document.querySelector("#organizer-dialog");
 const organizerForm = document.querySelector("#organizer-form");
 const feedbackDialog = document.querySelector("#feedback-dialog");
 const feedbackForm = document.querySelector("#feedback-form");
+const confirmDialog = document.querySelector("#confirm-dialog");
+const confirmForm = document.querySelector("#confirm-form");
 let session;
 let notice = "";
 let addFormOpen = false;
+let reclubImportOpen = false;
+let importingReclub = false;
+const defaultRosterPageSize = 6;
+const paginationReservedSpace = 51;
+let rosterPageSize = defaultRosterPageSize;
+const waitingPageSize = 6;
+let rosterPage = 0;
+let waitingPage = 0;
+let rosterAnchorIndexAfterResize = null;
 let pendingSessionAction;
+let resolveConfirmation;
 
 try {
   session = loadSession();
@@ -41,11 +53,13 @@ function render() {
         <p class="welcome-copy">Fair, easy-to-run pickleball sessions—without a clipboard full of matchups.</p>
         ${notice ? `<p class="notice notice-error" role="alert">${escapeHtml(notice)}</p>` : ""}
         <form id="create-form" class="setup-card">
-        <p class="privacy-note">Organizer details are required for session reports. Your club name is optional.</p>
+        <p class="privacy-note">Your email is required for session reports and a thank-you after the session.</p>
         <label class="field-label" for="organizer-name">Your name</label>
         <input id="organizer-name" name="organizerName" class="text-input" required maxlength="70" autocomplete="name" placeholder="Organizer name">
         <label class="field-label" for="organizer-contact">Contact number</label>
         <input id="organizer-contact" name="contactNumber" class="text-input" type="tel" required minlength="7" maxlength="25" autocomplete="tel" placeholder="Your phone number">
+        <label class="field-label" for="organizer-email">Email address</label>
+        <input id="organizer-email" name="organizerEmail" class="text-input" type="email" required maxlength="254" autocomplete="email" placeholder="you@example.com">
         <label class="field-label" for="organizer-club">Club name <span class="muted">(optional)</span></label>
         <input id="organizer-club" name="clubName" class="text-input" maxlength="80" autocomplete="organization" placeholder="Club or group name">
         <label class="field-label" for="court-name">Court / venue name</label>
@@ -74,10 +88,18 @@ function render() {
   const playingIds = new Set(session.matches.filter((match) => match.status === "inProgress").flatMap((match) => match.playerIds));
   const pausedIds = new Set(session.matches.filter((match) => match.status === "inProgress" && match.pausedAt).flatMap((match) => match.playerIds));
   const proposedIds = new Set(session.matches.filter((match) => match.status === "proposed").flatMap((match) => match.playerIds));
-  const waiting = session.players.filter((player) => player.status === "active" && !playingIds.has(player.id) && !proposedIds.has(player.id));
+  const waiting = sortPlayersByName(session.players.filter((player) =>
+    player.status === "active" && !playingIds.has(player.id) && !proposedIds.has(player.id)));
+  const alphabeticalPlayers = sortPlayersByName(session.players);
   const liveMatches = session.matches.filter((match) => ["proposed", "inProgress"].includes(match.status));
   const activeCourts = session.matches.filter((match) => match.status === "inProgress").length;
   const completed = session.matches.filter((match) => match.status === "completed").slice().reverse();
+  const rosterPageCount = Math.max(1, Math.ceil(session.players.length / rosterPageSize));
+  const waitingPageCount = Math.max(1, Math.ceil(waiting.length / waitingPageSize));
+  rosterPage = Math.min(rosterPage, rosterPageCount - 1);
+  waitingPage = Math.min(waitingPage, waitingPageCount - 1);
+  const visiblePlayers = alphabeticalPlayers.slice(rosterPage * rosterPageSize, (rosterPage + 1) * rosterPageSize);
+  const visibleWaiting = waiting.slice(waitingPage * waitingPageSize, (waitingPage + 1) * waitingPageSize);
 
   app.innerHTML = `
     <header class="topbar">
@@ -97,6 +119,7 @@ function render() {
         </div>
         <div class="session-actions">${sessionControls()}</div>
       </section>
+      ${session.status === "completed" ? `<section class="panel final-panel session-summary-panel"><div><p class="eyebrow">SESSION SUMMARY</p><h2>That's a wrap.</h2><p>${stats.completedGames} games played · ${session.players.length} players · average ${stats.averageGames.toFixed(1)} games per player.</p>${session.feedback ? '<p class="feedback-confirmation">Feedback submitted.</p>' : '<p class="feedback-required">Submit the required feedback before starting a new session.</p>'}</div><div class="summary-actions">${session.feedback ? "" : '<button class="button button-secondary" data-action="submit-feedback">Submit feedback</button>'}<button class="button button-primary" data-action="new-session">Start New Session</button></div></section>` : ""}
       <section class="stat-strip" aria-label="Session overview">
         <div class="stat"><span class="stat-label">Players here</span><strong>${active}<small> / ${session.players.length}</small></strong><span class="stat-caption">${session.players.filter((player) => player.status === "resting").length} resting</span></div>
         <div class="stat"><span class="stat-label">Games played</span><strong>${stats.completedGames}</strong><span class="stat-caption">${session.format} format</span></div>
@@ -107,17 +130,27 @@ function render() {
         <section class="panel roster-panel">
           <div class="panel-heading">
             <div><p class="eyebrow">THE LINEUP</p><h2>Players <span class="count-badge">${session.players.length}</span></h2></div>
-            <button class="button button-quiet button-small" data-action="toggle-add" ${session.status === "completed" ? "disabled" : ""}>＋ Add player</button>
+            <div class="queue-actions">
+              <button class="button button-quiet button-small" data-action="toggle-add" ${session.status === "completed" ? "disabled" : ""}>＋ Add player</button>
+              <button class="button button-quiet button-small" data-action="toggle-reclub-import" ${session.status === "completed" ? "disabled" : ""}>Import Reclub</button>
+            </div>
           </div>
-          <form id="add-player-form" class="add-player-form ${addFormOpen ? "" : "hidden"}">
-            <input class="text-input" name="name" required maxlength="50" placeholder="Player name" aria-label="Player name" ${session.status === "completed" ? "disabled" : ""}>
-            <select class="text-input" name="skill" aria-label="Skill level" ${session.status === "completed" ? "disabled" : ""}>${skillOptions(3)}</select>
-            <button class="button button-primary button-small" type="submit" ${session.status === "completed" ? "disabled" : ""}>Add</button>
-          </form>
-          <div class="roster-list">
-            ${session.players.length ? session.players.map((player) => playerRow(player, playingIds, proposedIds, pausedIds)).join("") : '<div class="empty-state"><span class="empty-icon">♧</span><strong>Your lineup starts here</strong><span>Add players to get the session going.</span></div>'}
+          <div class="roster-content ${session.players.length > rosterPageSize ? "has-pagination" : ""}">
+            <form id="add-player-form" class="add-player-form ${addFormOpen ? "" : "hidden"}">
+              <input class="text-input" name="name" required maxlength="50" placeholder="Player name" aria-label="Player name" ${session.status === "completed" ? "disabled" : ""}>
+              <select class="text-input" name="skill" aria-label="Skill level" ${session.status === "completed" ? "disabled" : ""}>${skillOptions(3)}</select>
+              <button class="button button-primary button-small" type="submit" ${session.status === "completed" ? "disabled" : ""}>Add</button>
+            </form>
+            <form id="reclub-import-form" class="reclub-import-form ${reclubImportOpen ? "" : "hidden"}">
+              <input id="reclub-event-url" class="text-input" name="eventUrl" type="url" required maxlength="2048" aria-label="Public Reclub event link" placeholder="https://reclub.co/m/EVENTCODE" ${session.status === "completed" || importingReclub ? "disabled" : ""}>
+              <button class="button button-secondary button-small" type="submit" ${session.status === "completed" || importingReclub ? "disabled" : ""}>${importingReclub ? "Importing…" : "Import confirmed"}</button>
+            </form>
+            <div class="roster-list ${session.players.length > rosterPageSize ? "has-pagination" : ""}">
+              ${session.players.length ? visiblePlayers.map((player) => playerRow(player, playingIds, proposedIds, pausedIds)).join("") : '<div class="empty-state"><span class="empty-icon">♧</span><strong>Your lineup starts here</strong><span>Add players to get the session going.</span></div>'}
+            </div>
+            ${session.status === "draft" ? '<p class="panel-hint">Add at least 2 players for singles or 4 for doubles, then start.</p>' : ""}
+            ${paginationControls("roster-page", rosterPage, rosterPageCount, session.players.length)}
           </div>
-          ${session.status === "draft" ? '<p class="panel-hint">Add at least 2 players for singles or 4 for doubles, then start.</p>' : ""}
         </section>
         <section class="panel matches-panel">
           <div class="panel-heading">
@@ -130,7 +163,8 @@ function render() {
           </div>
           <section class="waiting-section">
             <div class="waiting-heading"><span class="eyebrow">AVAILABLE NEXT</span><span class="count-badge">${waiting.length}</span></div>
-            <div class="waiting-cards">${waiting.length ? waiting.map(waitingCard).join("") : '<span class="muted">No unassigned players waiting</span>'}</div>
+            <div class="waiting-cards ${waiting.length > waitingPageSize ? "has-pagination" : ""}">${waiting.length ? visibleWaiting.map(waitingCard).join("") : '<span class="muted">No unassigned players waiting</span>'}</div>
+            ${paginationControls("waiting-page", waitingPage, waitingPageCount, waiting.length)}
           </section>
         </section>
       </div>
@@ -158,10 +192,68 @@ function render() {
         ${leaderboardTable(stats.players, true)}
       </section>
       ${completed.length ? `<section class="panel history-panel"><div class="panel-heading"><div><p class="eyebrow">THE RECORD</p><h2>Game history</h2></div><span class="muted">${completed.length} completed</span></div><div class="history-list">${completed.slice(0, 8).map(historyRow).join("")}</div></section>` : ""}
-      ${session.status === "completed" ? `<section class="panel final-panel"><p class="eyebrow">SESSION SUMMARY</p><h2>That's a wrap.</h2><p>${stats.completedGames} games played · ${session.players.length} players · average ${stats.averageGames.toFixed(1)} games per player.</p>${session.feedback ? '<p class="feedback-confirmation">Feedback submitted. It is included in the final email report.</p>' : '<p class="feedback-required">Required: submit feedback to email the final report.</p>'}<button class="button button-secondary" data-action="email-session-report">${session.feedback ? "Email final report" : "Submit feedback & email report"}</button>${session.feedback ? ' <button class="button button-quiet" data-action="new-session">Start a new session</button>' : ""}</section>` : ""}
       <footer class="page-footer">PickleQueue ni Loyloy <span>·</span> Fair play, better rotations.</footer>
     </div>`;
+  requestAnimationFrame(syncDashboardPanels);
 }
+
+function syncDashboardPanels() {
+  const rosterPanel = document.querySelector(".roster-panel");
+  const matchesPanel = document.querySelector(".matches-panel");
+  if (!rosterPanel || !matchesPanel) return;
+
+  if (!window.matchMedia("(min-width: 851px)").matches) {
+    rosterPanel.style.height = "";
+    fitRosterPageSize();
+    return;
+  }
+
+  rosterPanel.style.height = "";
+  rosterPanel.style.height = `${matchesPanel.getBoundingClientRect().height}px`;
+  fitRosterPageSize();
+}
+
+function fitRosterPageSize() {
+  const rosterPanel = document.querySelector(".roster-panel");
+  const rosterList = document.querySelector(".roster-list");
+  const firstRow = rosterList?.querySelector(".player-row");
+  if (!rosterPanel || !rosterList || !firstRow) return;
+
+  let targetPageSize = defaultRosterPageSize;
+  if (window.matchMedia("(min-width: 851px)").matches) {
+    const styles = window.getComputedStyle(rosterPanel);
+    const panelBottom = rosterPanel.getBoundingClientRect().bottom -
+      parseFloat(styles.borderBottomWidth) - parseFloat(styles.paddingBottom);
+    const listTop = rosterList.getBoundingClientRect().top;
+    const rowHeight = firstRow.getBoundingClientRect().height;
+    const hint = rosterPanel.querySelector(".panel-hint");
+    const hintStyles = hint ? window.getComputedStyle(hint) : null;
+    const hintSpace = hint
+      ? hint.getBoundingClientRect().height + parseFloat(hintStyles.marginTop) + parseFloat(hintStyles.marginBottom)
+      : 0;
+    const availableHeight = Math.max(0, panelBottom - listTop - hintSpace);
+    const rowsWithoutPagination = Math.max(1, Math.floor(availableHeight / rowHeight));
+    const needsPagination = session.players.length > rowsWithoutPagination;
+    targetPageSize = Math.max(1, Math.floor(
+      (availableHeight - (needsPagination ? paginationReservedSpace : 0)) / rowHeight
+    ));
+  }
+  if (targetPageSize === rosterPageSize) {
+    rosterAnchorIndexAfterResize = null;
+    return;
+  }
+
+  const anchorIndex = rosterAnchorIndexAfterResize !== null
+    ? rosterAnchorIndexAfterResize
+    : rosterPage * rosterPageSize;
+  rosterPageSize = targetPageSize;
+  const pageCount = Math.max(1, Math.ceil(session.players.length / rosterPageSize));
+  rosterPage = Math.min(Math.floor(anchorIndex / rosterPageSize), pageCount - 1);
+  rosterAnchorIndexAfterResize = null;
+  render();
+}
+
+window.addEventListener("resize", () => requestAnimationFrame(syncDashboardPanels));
 
 function sessionControls() {
   if (session.status === "draft") {
@@ -169,7 +261,7 @@ function sessionControls() {
     const available = session.players.filter((player) => player.status === "active").length;
     return `<button class="button button-primary" data-action="start-session" ${available < needed ? "disabled" : ""}>Start session <span aria-hidden="true">→</span></button>`;
   }
-  if (session.status === "active") return '<button class="button button-quiet" data-action="email-session-report">Email update</button><button class="button button-quiet" data-action="pause-session">Pause session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
+  if (session.status === "active") return '<button class="button button-pause" data-action="pause-session">Ⅱ Pause session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
   if (session.status === "paused") return '<button class="button button-primary" data-action="resume-session">Resume session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
   return "";
 }
@@ -194,6 +286,10 @@ function playerRow(player, playingIds, proposedIds, pausedIds) {
   </article>`;
 }
 
+function sortPlayersByName(players) {
+  return [...players].sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: "base" }));
+}
+
 function matchCard(match) {
   const teams = match.teams.map((team) => team.map((id) => session.players.find((player) => player.id === id)).filter(Boolean));
   const score = Number.isInteger(match.scoreA) && Number.isInteger(match.scoreB) ? `${match.scoreA} – ${match.scoreB}` : match.score || "";
@@ -201,10 +297,19 @@ function matchCard(match) {
   const timer = match.status === "inProgress"
     ? `<span class="match-timer" data-started-at="${escapeHtml(match.startedAt ?? "")}" data-paused-at="${escapeHtml(match.pausedAt ?? "")}" data-total-paused="${Number(match.totalPausedMs ?? 0)}" aria-label="Game duration" aria-live="off">${formatElapsed(match.startedAt, match.pausedAt, match.totalPausedMs)}</span>`
     : "";
+  const activeCourtNumbers = new Set(session.matches
+    .filter((entry) => entry.status === "inProgress")
+    .map((entry) => entry.court));
+  const reservedCourtNumbers = new Set(session.matches
+    .filter((entry) => entry.id !== match.id && ["proposed", "inProgress"].includes(entry.status))
+    .map((entry) => entry.court));
+  const canReassignCourt = Array.from({ length: session.courts }, (_, index) => index + 1)
+    .some((court) => !reservedCourtNumbers.has(court));
   const canStart = session.status === "active" && activeCourts < session.courts &&
+    (!activeCourtNumbers.has(match.court) || canReassignCourt) &&
     match.playerIds.every((id) => session.players.find((player) => player.id === id)?.status === "active");
   return `<article class="match-card ${match.status === "inProgress" ? "match-playing" : ""} ${match.pausedAt ? "match-paused" : ""}">
-    <div class="match-top"><div class="court-label"><span class="court-icon">▦</span> ${match.status === "inProgress" ? `Court ${match.court}` : "Waiting for court"} ${match.kind === "custom" ? '<span class="custom-badge">CUSTOM</span>' : ""}</div><span class="match-status">${match.status === "inProgress" ? `${match.pausedAt ? "PAUSED" : "IN PLAY"} · LOCKED ${timer}` : "QUEUED"}</span></div>
+    <div class="match-top"><div class="court-label"><span class="court-icon">▦</span> Court ${match.court ?? "unassigned"} ${match.kind === "custom" ? '<span class="custom-badge">CUSTOM</span>' : ""}</div><span class="match-status">${match.status === "inProgress" ? `${match.pausedAt ? "PAUSED" : "IN PLAY"} · LOCKED ${timer}` : "QUEUED"}</span></div>
     <div class="teams">${teams.map((team, index) => `<div class="team"><span class="team-label">TEAM ${index ? "B" : "A"}${match.status === "completed" && match.winnerTeam === index ? " · WINNER" : ""}</span>${team.map(playerMatchLine).join("")}</div>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}</div>
     ${score ? `<div class="match-score">${escapeHtml(score)}</div>` : ""}
     ${match.warning ? `<div class="match-warning" title="${escapeHtml(match.reason)}">⚠ Skill balance trade-off <span class="warning-help">${escapeHtml(match.reason)}</span></div>` : `<p class="match-reason">${escapeHtml(match.reason)}</p>`}
@@ -225,8 +330,19 @@ function playerMatchLine(player) {
 
 function waitingCard(player) {
   const winRate = player.games ? `${((player.wins / player.games) * 100).toFixed(0)}%` : "N/A";
-  const minutes = player.waitSince ? Math.max(0, Math.floor((Date.now() - player.waitSince) / 60000)) : 0;
-  return `<article class="waiting-card"><div class="avatar avatar-${player.skill}">${initials(player.name)}</div><div class="waiting-player-info"><strong>${escapeHtml(player.name)}</strong><span>${skillName(player.skill)} · ${winRate} · ${player.wins}W/${player.games}G</span><small>Waiting ${minutes} min · Available</small></div><button class="icon-button" data-action="rest-player" data-id="${player.id}" title="Put ${escapeHtml(player.name)} on break" aria-label="Put ${escapeHtml(player.name)} on break">Ⅱ</button></article>`;
+  const waitSince = Number.isFinite(player.waitSince) ? new Date(player.waitSince).toISOString() : "";
+  const waitingTime = waitSince ? formatElapsed(waitSince) : "00:00";
+  return `<article class="waiting-card"><div class="avatar avatar-${player.skill}">${initials(player.name)}</div><div class="waiting-player-info"><strong>${escapeHtml(player.name)}</strong><span>${skillName(player.skill)} · ${winRate} · ${player.wins}W/${player.games}G</span><small>Waiting <span class="waiting-timer" data-wait-since="${escapeHtml(waitSince)}">${waitingTime}</span> · Available</small></div><button class="icon-button" data-action="rest-player" data-id="${player.id}" title="Put ${escapeHtml(player.name)} on break" aria-label="Put ${escapeHtml(player.name)} on break">Ⅱ</button></article>`;
+}
+
+function paginationControls(action, page, pageCount, itemCount) {
+  if (itemCount <= (action === "roster-page" ? rosterPageSize : waitingPageSize)) return "";
+  const label = action === "roster-page" ? "Players" : "Available players";
+  return `<nav class="list-pagination" aria-label="${label} pages">
+    <button class="button button-quiet button-small" data-action="${action}" data-page="${page - 1}" aria-label="Previous ${label.toLowerCase()} page" ${page === 0 ? "disabled" : ""}>← Previous</button>
+    <span aria-live="polite">Page ${page + 1} of ${pageCount}</span>
+    <button class="button button-quiet button-small" data-action="${action}" data-page="${page + 1}" aria-label="Next ${label.toLowerCase()} page" ${page === pageCount - 1 ? "disabled" : ""}>Next →</button>
+  </nav>`;
 }
 
 function leaderboardTable(players, compact) {
@@ -243,7 +359,7 @@ function strategyOptions(selected) {
 
 function settingHelp(description) {
   const text = escapeHtml(description);
-  return `<span class="setting-help" tabindex="0" role="img" aria-label="${text}" title="${text}"><span aria-hidden="true">i</span><span class="setting-tooltip" role="tooltip">${text}</span></span>`;
+  return `<span class="setting-help" tabindex="0" role="img" aria-label="${text}"><span aria-hidden="true">i</span><span class="setting-tooltip" role="tooltip">${text}</span></span>`;
 }
 
 function skillOptions(selected) {
@@ -270,6 +386,7 @@ function buildSessionReport(reportType) {
     "",
     `Organizer: ${organizer.name || "Not provided"}`,
     `Contact number: ${organizer.contactNumber || "Not provided"}`,
+    `Email: ${organizer.email || "Not provided"}`,
     `Club: ${organizer.clubName || "Not provided"}`,
     `Court / venue: ${session.courtName || "Not provided"}`,
     `Session: ${session.name}`,
@@ -304,7 +421,7 @@ function buildSessionReport(reportType) {
 }
 
 async function emailSessionReport(reportType) {
-  if (!session.organizer?.name || !session.organizer?.contactNumber || !session.courtName) {
+  if (!session.organizer?.name || !session.organizer?.contactNumber || !session.organizer?.email || !session.courtName) {
     pendingSessionAction = `report:${reportType}`;
     openOrganizerDialog();
     return "";
@@ -316,6 +433,8 @@ async function emailSessionReport(reportType) {
       body: JSON.stringify({
         reportType,
         sessionName: session.name,
+        organizerName: session.organizer.name,
+        organizerEmail: session.organizer.email,
         report: buildSessionReport(reportType)
       })
     });
@@ -326,7 +445,7 @@ async function emailSessionReport(reportType) {
     if (!response.ok) throw new Error(result.error || `Email request failed (${response.status}).`);
     return "";
   } catch (error) {
-    return `Session saved, but the email report could not be sent: ${error.message}`;
+    return `Session saved, but one or more session emails could not be sent: ${error.message}`;
   }
 }
 
@@ -334,6 +453,7 @@ function openOrganizerDialog() {
   organizerForm.reset();
   organizerForm.elements.name.value = session.organizer?.name ?? "";
   organizerForm.elements.contactNumber.value = session.organizer?.contactNumber ?? "";
+  organizerForm.elements.email.value = session.organizer?.email ?? "";
   organizerForm.elements.clubName.value = session.organizer?.clubName ?? "";
   organizerForm.elements.courtName.value = session.courtName ?? "";
   organizerDialog.showModal();
@@ -346,13 +466,28 @@ async function sendReportAndNotify(reportType) {
   if (emailError) {
     notice = emailError;
     render();
-  } else if (!organizerDialog.open) {
-    notice = `Session ${reportType} report emailed.`;
-    render();
   }
 }
 
-app.addEventListener("submit", (event) => {
+function requestConfirmation({ title, message, confirmLabel = "Confirm", eyebrow = "CONFIRM ACTION" }) {
+  document.querySelector("#confirm-title").textContent = title;
+  document.querySelector("#confirm-message").textContent = message;
+  document.querySelector("#confirm-accept").textContent = confirmLabel;
+  document.querySelector("#confirm-eyebrow").textContent = eyebrow;
+  confirmDialog.showModal();
+  return new Promise((resolve) => {
+    resolveConfirmation = resolve;
+  });
+}
+
+function closeConfirmation(confirmed) {
+  const resolve = resolveConfirmation;
+  resolveConfirmation = null;
+  confirmDialog.close();
+  resolve?.(confirmed);
+}
+
+app.addEventListener("submit", async (event) => {
   event.preventDefault();
   const data = new FormData(event.target);
   try {
@@ -362,12 +497,40 @@ app.addEventListener("submit", (event) => {
       notice = "";
       render();
     } else if (event.target.id === "add-player-form") {
-      addPlayer(session, Object.fromEntries(data.entries()));
+      const addedPlayer = addPlayer(session, Object.fromEntries(data.entries()));
       addFormOpen = true;
+      const sortedPlayerIndex = sortPlayersByName(session.players).findIndex((player) => player.id === addedPlayer.id);
+      rosterAnchorIndexAfterResize = sortedPlayerIndex;
+      rosterPage = Math.floor(sortedPlayerIndex / rosterPageSize);
       persist();
       notice = "";
       render();
       document.querySelector('#add-player-form [name="name"]').focus();
+    } else if (event.target.id === "reclub-import-form") {
+      if (importingReclub) return;
+      importingReclub = true;
+      notice = "Importing confirmed Reclub players…";
+      render();
+      try {
+        const response = await fetch("/api/reclub-import", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ eventUrl: data.get("eventUrl") })
+        });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error || "The Reclub event could not be imported.");
+        if (!Array.isArray(result.players) || !result.players.every((name) => typeof name === "string")) {
+          throw new Error("The Reclub import returned an invalid player list.");
+        }
+        const imported = importRestingPlayers(session, result.players);
+        persist();
+        notice = `Imported ${imported.length} confirmed player${imported.length === 1 ? "" : "s"} as Intermediate and placed them on break.`;
+        reclubImportOpen = false;
+        rosterPage = Math.max(0, Math.ceil(session.players.length / rosterPageSize) - 1);
+        render();
+      } finally {
+        importingReclub = false;
+      }
     }
   } catch (error) {
     showError(error);
@@ -377,20 +540,28 @@ app.addEventListener("submit", (event) => {
 resultForm.addEventListener("submit", (event) => {
   event.preventDefault();
   const data = new FormData(resultForm);
-  try {
-    if (resultForm.dataset.mode === "edit-score") {
-      if (!confirm("Correct this completed score? The recorded winner and player statistics will be recalculated.")) return;
-      editCompletedScore(session, data.get("matchId"), data.get("scoreA"), data.get("scoreB"));
-    } else {
-      recordResultAndGenerate(session, data.get("matchId"), data.get("scoreA"), data.get("scoreB"));
+  (async () => {
+    try {
+      if (resultForm.dataset.mode === "edit-score") {
+        const confirmed = await requestConfirmation({
+          title: "Correct recorded score?",
+          message: "The winner and player statistics will be recalculated using this score.",
+          confirmLabel: "Correct score",
+          eyebrow: "EDIT RESULT"
+        });
+        if (!confirmed) return;
+        editCompletedScore(session, data.get("matchId"), data.get("scoreA"), data.get("scoreB"));
+      } else {
+        recordResultAndGenerate(session, data.get("matchId"), data.get("scoreA"), data.get("scoreB"));
+      }
+      resultDialog.close();
+      commit();
+    } catch (error) {
+      const message = document.querySelector("#score-rules");
+      message.textContent = error.message;
+      message.classList.add("notice-error");
     }
-    resultDialog.close();
-    commit();
-  } catch (error) {
-    const message = document.querySelector("#score-rules");
-    message.textContent = error.message;
-    message.classList.add("notice-error");
-  }
+  })();
 });
 
 matchForm.addEventListener("submit", (event) => {
@@ -403,18 +574,11 @@ matchForm.addEventListener("submit", (event) => {
   ];
   try {
     if (matchForm.dataset.mode === "custom") {
-      const selectedIds = teams.flat();
-      const pulledCount = selectedIds.filter((playerId) =>
-        session.matches.some((match) => match.status === "proposed" && match.playerIds.includes(playerId))).length;
       createCustomMatch(session, teams);
-      notice = pulledCount
-        ? `Custom match queued. ${pulledCount} queued ${plural(pulledCount, "player")} moved; their former match spots were backfilled.`
-        : "Custom match queued.";
+      notice = "";
     } else {
-      const result = editQueuedMatch(session, data.get("matchId"), teams);
-      notice = result.exchanges.length
-        ? `${result.exchanges.length} queued player ${plural(result.exchanges.length, "exchange")} applied.`
-        : "Queued match updated.";
+      editQueuedMatch(session, data.get("matchId"), teams);
+      notice = "";
     }
     matchDialog.close();
     persist();
@@ -488,21 +652,45 @@ feedbackForm.elements.feedback.addEventListener("input", () => {
   feedbackForm.elements.feedback.setCustomValidity("");
 });
 
+confirmForm.addEventListener("submit", (event) => {
+  event.preventDefault();
+  closeConfirmation(true);
+});
+confirmForm.querySelector('[data-action="cancel-confirm"]').addEventListener("click", () => closeConfirmation(false));
+confirmDialog.addEventListener("cancel", (event) => {
+  event.preventDefault();
+  closeConfirmation(false);
+});
+
 app.addEventListener("click", async (event) => {
   const button = event.target.closest("[data-action]");
   if (!button) return;
   const { action, id } = button.dataset;
   try {
     if (action === "dismiss-notice") { notice = ""; render(); return; }
+    if (action === "roster-page" || action === "waiting-page") {
+      const page = Number(button.dataset.page);
+      if (!Number.isInteger(page) || page < 0) return;
+      if (action === "roster-page") rosterPage = page;
+      else waitingPage = page;
+      render();
+      return;
+    }
     if (action === "toggle-add") {
       addFormOpen = !addFormOpen;
       render();
       if (addFormOpen) document.querySelector('#add-player-form [name="name"]').focus();
       return;
     }
+    if (action === "toggle-reclub-import") {
+      reclubImportOpen = !reclubImportOpen;
+      render();
+      if (reclubImportOpen) document.querySelector("#reclub-event-url").focus();
+      return;
+    }
     let reportType = null;
     if (action === "start-session") {
-      if (!session.organizer?.name || !session.organizer?.contactNumber || !session.courtName) {
+      if (!session.organizer?.name || !session.organizer?.contactNumber || !session.organizer?.email || !session.courtName) {
         pendingSessionAction = "start";
         openOrganizerDialog();
         return;
@@ -512,19 +700,21 @@ app.addEventListener("click", async (event) => {
     }
     if (action === "pause-session") pauseSession(session);
     if (action === "resume-session") resumeSession(session);
-    if (action === "email-session-report") {
-      reportType = session.status === "completed" ? "ended" : "started";
-      if (reportType === "ended" && !session.feedback) {
-        feedbackForm.reset();
-        feedbackDialog.showModal();
-        feedbackForm.elements.feedback.focus();
-        return;
-      }
+    if (action === "submit-feedback") {
+      feedbackForm.reset();
+      feedbackDialog.showModal();
+      feedbackForm.elements.feedback.focus();
+      return;
     }
     if (action === "end-session") {
       const unfinished = session.matches.filter((match) => ["proposed", "inProgress"].includes(match.status)).length;
       const explanation = unfinished ? ` This will cancel ${unfinished} unfinished or proposed ${plural(unfinished, "game")} without recording results.` : "";
-      if (!confirm(`End ${session.name}?${explanation}`)) return;
+      const confirmed = await requestConfirmation({
+        title: `End ${session.name}?`,
+        message: `This will complete the session.${explanation}`,
+        confirmLabel: "End session"
+      });
+      if (!confirmed) return;
       endSession(session, { confirmUnfinished: true });
       session.feedback = "";
       commit();
@@ -535,8 +725,9 @@ app.addEventListener("click", async (event) => {
     }
     if (action === "generate") {
       const result = generateMatches(session);
-      notice = result.matches.length ? (result.message || `${result.matches.length} fair ${plural(result.matches.length, "match")} proposed across the open courts.`) : result.message;
-      commit();
+      notice = result.matches.length ? "" : result.message;
+      persist();
+      render();
       return;
     }
     if (action === "start-match") startMatch(session, id);
@@ -545,20 +736,32 @@ app.addEventListener("click", async (event) => {
     if (action === "pause-game") pauseMatch(session, id);
     if (action === "resume-game") resumeMatch(session, id);
     if (action === "stop-game") {
-      if (!confirm("Return this game to the editable queue without recording a score?")) return;
+      if (!await requestConfirmation({
+        title: "Stop this game?",
+        message: "The game will return to the editable queue without recording a score.",
+        confirmLabel: "Stop game"
+      })) return;
       stopMatch(session, id);
-      notice = "Game returned to the queue without a score.";
+      notice = "";
     }
     if (action === "cancel-match") {
-      if (!confirm("Remove this proposed game from the queue?")) return;
+      if (!await requestConfirmation({
+        title: "Remove this queued match?",
+        message: "The match will be removed from the live queue.",
+        confirmLabel: "Remove match"
+      })) return;
       cancelProposedMatch(session, id);
     }
-    if (action === "rest-player") changeAvailability(id, "resting");
-    if (action === "unavailable-player") changeAvailability(id, "unavailable");
+    if (action === "rest-player") await changeAvailability(id, "resting");
+    if (action === "unavailable-player") await changeAvailability(id, "unavailable");
     if (action === "return-player") setPlayerAvailability(session, id, "active");
     if (action === "remove-player") {
       const player = session.players.find((entry) => entry.id === id);
-      if (!confirm(`Remove ${player.name} from this session?`)) return;
+      if (!await requestConfirmation({
+        title: `Remove ${player.name}?`,
+        message: "This player will be removed from this session and any queued match they are in will be canceled.",
+        confirmLabel: "Remove player"
+      })) return;
       removePlayer(session, id, { confirmRemoval: true });
     }
     if (action === "edit-player") {
@@ -568,7 +771,17 @@ app.addEventListener("click", async (event) => {
     if (action === "record-result") openResult(id);
     if (action === "edit-score") openResult(id, true);
     if (action === "new-session") {
-      if (!confirm("Start a new session? This will replace the saved session on this device.")) return;
+      if (!session.feedback) {
+        feedbackForm.reset();
+        feedbackDialog.showModal();
+        feedbackForm.elements.feedback.focus();
+        return;
+      }
+      if (!await requestConfirmation({
+        title: "Start a new session?",
+        message: "This will replace the session currently saved on this device.",
+        confirmLabel: "Start new session"
+      })) return;
       clearSession();
       session = null;
       notice = "";
@@ -585,11 +798,16 @@ app.addEventListener("click", async (event) => {
   }
 });
 
-function changeAvailability(playerId, status) {
+async function changeAvailability(playerId, status) {
   const result = setPlayerAvailability(session, playerId, status);
   if (result.requiresConfirmation) {
     const player = session.players.find((entry) => entry.id === playerId);
-    if (!confirm(`${player.name} is in a proposed game. Remove that proposed game and change their status?`)) return false;
+    const confirmed = await requestConfirmation({
+      title: `Change ${player.name}'s status?`,
+      message: `${player.name} is in a queued match. Changing their status will remove that match from the queue.`,
+      confirmLabel: "Change status"
+    });
+    if (!confirmed) return false;
     setPlayerAvailability(session, playerId, status, { confirmRemoval: true });
   }
   return result.changed || result.requiresConfirmation;
@@ -608,6 +826,10 @@ app.addEventListener("change", (event) => {
     if (setting === "scoringTo" && (!Number.isInteger(value) || value < 1 || value > 99)) throw new Error("Winning score target must be between 1 and 99.");
     if (setting === "courts" && value < session.matches.filter((match) => match.status === "inProgress").length) {
       throw new Error("Court count cannot be less than the number of active games.");
+    }
+    if (setting === "courts" && session.matches.some((match) =>
+      ["proposed", "inProgress"].includes(match.status) && match.court > value)) {
+      throw new Error("Court count cannot be less than the highest court assigned to a queued or active match.");
     }
     if (setting === "strategy" && !["draft", "active", "paused"].includes(session.status)) throw new Error("Queue strategy cannot be changed after the session.");
     if (setting === "courts") session.courts = value;
@@ -687,7 +909,7 @@ function openMatchEditor(mode, matchId = "") {
   document.querySelector("#match-player-fields").innerHTML = [0, 1].map((teamIndex) =>
     `<fieldset class="match-team-field"><legend>Team ${teamIndex ? "B" : "A"}</legend>${Array.from({ length: size }, (_, slot) => {
       const selected = existingTeams[teamIndex][slot] ?? "";
-      const options = session.players.map((player) => {
+      const options = sortPlayersByName(session.players).map((player) => {
         const reservation = reserved.get(player.id);
         const unavailable = player.status !== "active" || inProgressIds.has(player.id);
         const status = inProgressIds.has(player.id) ? " · Playing" : player.status !== "active" ? ` · ${titleCase(player.status)}` :
@@ -740,6 +962,9 @@ setInterval(updateMatchTimers, 1000);
 function updateMatchTimers() {
   document.querySelectorAll(".match-timer").forEach((timer) => {
     timer.textContent = formatElapsed(timer.dataset.startedAt, timer.dataset.pausedAt, Number(timer.dataset.totalPaused));
+  });
+  document.querySelectorAll(".waiting-timer").forEach((timer) => {
+    if (timer.dataset.waitSince) timer.textContent = formatElapsed(timer.dataset.waitSince);
   });
 }
 

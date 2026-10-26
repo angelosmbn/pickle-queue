@@ -1,11 +1,12 @@
 # PickleQueue ni Loyloy
 
-A local-first pickleball session manager for a single organizer. Serve `index.html` from a local static web server (for example, `npm start`) and run the domain tests with `npm test`.
+A local-first pickleball session manager for a single organizer. Run `npm start` to serve the app locally, including the Reclub import API, and run the tests with `npm test`.
 
 ## What it includes
 
 - Draft, active, paused, and completed session states.
 - Singles and doubles, a configurable court count, player skill levels, breaks, and availability.
+- Public Reclub event import for confirmed, paid players; imported players start at Intermediate and on break.
 - Unique player names, checked case-insensitively when adding or editing players.
 - Four matching strategies, deterministic scoring, court-aware simultaneous match selection, fairness explanations, and soft skill-gap warnings.
 - Organizer-created custom matches, queued-match editing, automatic player exchanges, plus pause/resume and stop-to-queue controls.
@@ -13,13 +14,15 @@ A local-first pickleball session manager for a single organizer. Serve `index.ht
 - A live elapsed-time timer on every in-progress game.
 - Match cards with player skill levels and session win rates, plus waiting cards that exclude reserved and playing players.
 - Browser `localStorage` persistence, so a refresh on the same browser/device keeps the session.
-- Optional Gmail session reports sent at session start and end through a Vercel serverless function.
+- Gmail session reports sent at session start and end through a Vercel serverless function, plus a thank-you email to the organizer after feedback is submitted.
+
+Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads only paid participants and their public display names from the event page; it does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
 
 ## How matching works
 
-The domain module first filters out players who are resting, unavailable, already on a live court, or otherwise ineligible. It enumerates feasible player groups and (for doubles) all team partitions. A normalized score balances team skill, sample-smoothed session performance, participation, waiting time, partner variety, and opponent variety. Strategy-specific weights change these priorities. It then searches bounded candidate sets for the best non-overlapping collection across the open courts, with stable IDs providing deterministic tie-breaking.
+The domain module first filters out players who are resting, unavailable, already on a live court, or otherwise ineligible. It prefers players below the consecutive-game rest limit, but if that leaves too few players to fill any court, it generates a match with available active players and notes the rest-limit override. It enumerates feasible player groups and (for doubles) all team partitions. A normalized score balances team skill, sample-smoothed session performance, participation, waiting time, partner variety, and opponent variety. Strategy-specific weights change these priorities. It then searches bounded candidate sets for the best non-overlapping collection across the open courts, with stable IDs providing deterministic tie-breaking.
 
-Proposed matches reserve open court slots just like in-progress games. If every court is occupied or already has a queued match, start an existing queued match or cancel it before generating another; unassigned eligible players can then fill any open court.
+Proposed matches receive and reserve a court number as soon as they are queued, just like in-progress games. Removing a generated queued match and choosing **Generate** favors a different matchup while primarily ranking options by the queue strategy; a replacement may keep some or all of the original players, and if no different player group is available, it favors a new team arrangement. If every court is occupied or already has a queued match, start an existing queued match or cancel it before generating another; unassigned eligible players can then fill any open court. The player lineup and available-next list are shown alphabetically.
 
 An organizer can pick active players who are already in queued matches. Custom-match creation replaces each pulled queued slot from the unassigned waiting players; if there are not enough replacements, the custom match is rejected without changing any queued assignment. Editing a queued match exchanges a selected queued player with the player being removed. Selecting a player already on the other team swaps their two positions. Live matches cannot be edited; stopping one returns it to the editable queue without recording a score. Pausing a live match freezes its timer.
 
@@ -35,7 +38,7 @@ Session data stays in the browser's local storage on this device. It does not sy
 
 ## Email reports on Vercel
 
-The setup asks for the organizer's name, contact number, and court/venue name before a session can start; club name is optional. When deployed to Vercel, the app emails a plain-text report when a session starts and ends. The report includes organizer contact details, court/venue, session settings, player statistics, and match history. After ending, the organizer must submit feedback before the final report is emailed. A report can also be sent manually with **Email update** or **Email final report**. If delivery fails, the session remains saved and the app displays an error; use the email button to retry.
+The setup asks for the organizer's name, contact number, email address, and court/venue name before a session can start; club name is optional. When deployed to Vercel, the app emails a formatted session report when a session starts and ends. The report includes organizer contact details, court/venue, session settings, player statistics, and match history. After ending, the organizer must submit feedback before the final report is emailed; a separate thank-you email is sent to the organizer's required email address. If delivery fails, the session remains saved and the app displays an error.
 
 Before deploying, add these environment variables in the Vercel project settings (for Production, and Preview if needed):
 
@@ -43,9 +46,9 @@ Before deploying, add these environment variables in the Vercel project settings
 - `GMAIL_APP_PASSWORD`: the Google App Password. Keep it in Vercel only; never add it to frontend code or commit it.
 - `REPORT_TO_EMAIL`: the inbox that receives the reports.
 
-The report endpoint does not prompt for an access code. It sends only to the fixed `REPORT_TO_EMAIL`, rejects cross-origin requests, and applies a best-effort per-instance request limit. Because the endpoint is public and Vercel functions can scale across instances, this limit is not strong authentication or a guaranteed global quota. For a private deployment, enable Vercel Deployment Protection or add user authentication before using it broadly. Organizer contact details, player names, results, and feedback are sent in email, so tell participants how this information will be used.
+The report endpoint does not prompt for an access code. Session reports go to the fixed `REPORT_TO_EMAIL`; after feedback, the thank-you message also goes to the organizer's email address entered at setup. The report and Reclub import endpoints reject cross-origin browser requests and apply best-effort per-instance request limits. Because Vercel functions can scale across instances, these limits are not strong authentication or guaranteed global quotas. For a private deployment, enable Vercel Deployment Protection or add user authentication before using the app broadly. Organizer contact details, email address, player names, results, and feedback are sent in email, so tell participants how this information will be used.
 
-After setting the variables, redeploy the Vercel project. The `api/send-report.js` function is available on Vercel; the plain local static server (`npm start`) does not run serverless API functions. To test email sending locally, run the project with the Vercel CLI (`vercel dev`) and provide the email environment variables in the local Vercel environment. If a Gmail address or App Password is changed, update the matching Vercel environment variable and redeploy.
+After setting the variables, redeploy the Vercel project. The `api/send-report.js` and `api/reclub-import.js` functions are available on Vercel. Local `npm start` runs the Reclub import endpoint but does not run the email-report function; use the Vercel CLI (`vercel dev`) to test all serverless functions locally. If a Gmail address or App Password is changed, update the matching Vercel environment variable and redeploy.
 
 ## Tests
 

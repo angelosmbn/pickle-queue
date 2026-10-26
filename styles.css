@@ -48,6 +48,8 @@ h1, h2, p { margin-top: 0; }
 .button-secondary:hover { background: #dcebe0; }
 .button-quiet { color: #46564c; background: #f0f3ef; }
 .button-quiet:hover { background: #e6ebe6; }
+.button-pause { color: #17452e; background: #c6e3cf; box-shadow: inset 0 0 0 1px #a8d0b4; }
+.button-pause:hover:not(:disabled) { background: #b1d8bd; box-shadow: inset 0 0 0 1px #8fc5a0; }
 .button-danger-quiet { color: #a5503d; background: #faeeeb; }
 .button-danger-quiet:hover { background: #f6e1dc; }
 .button-small { padding: 8px 11px; font-size: 11px; border-radius: 7px; }
@@ -59,14 +61,19 @@ h1, h2, p { margin-top: 0; }
 .stat strong small { color: #a6afa8; font-size: 13px; }
 .stat-caption { font-size: 10px; }
 .stat-queue strong { font-size: 15px; margin-top: 10px; }
-.dashboard-grid { display: grid; grid-template-columns: minmax(280px, .86fr) minmax(0, 1.5fr); gap: 18px; align-items: start; }
+.dashboard-grid { display: grid; grid-template-columns: minmax(280px, .86fr) minmax(0, 1.5fr); grid-template-rows: minmax(0, 1fr); gap: 18px; align-items: stretch; }
 .panel { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px; box-shadow: 0 2px 5px #203b2910; }
+.roster-panel, .matches-panel { display: flex; flex-direction: column; min-width: 0; align-self: stretch; }
+.roster-panel { display: grid; grid-template-rows: auto minmax(0, 1fr); }
 .panel-heading { display: flex; align-items: center; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
 .panel-heading .eyebrow { margin-bottom: 4px; }
 .panel-heading h2 { margin: 0; font: 800 18px Manrope, sans-serif; letter-spacing: -.45px; }
 .count-badge { display: inline-grid; place-items: center; vertical-align: 2px; margin-left: 5px; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 7px; background: #f0f3ef; color: #718078; font: 700 11px "DM Sans", sans-serif; }
-.roster-list { display: flex; flex-direction: column; }
-.player-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) 64px 103px; align-items: center; min-height: 59px; column-gap: 6px; border-bottom: 1px solid #f0f2ef; }
+.roster-content { position: relative; display: flex; flex: 1 1 0; flex-direction: column; min-height: 0; }
+.roster-content.has-pagination { padding-bottom: 51px; }
+.roster-list { display: flex; flex: 1 1 auto; flex-direction: column; min-height: 0; overflow: hidden; }
+.roster-footer { display: flex; flex-direction: column; min-width: 0; }
+.player-row { display: grid; flex: 0 0 auto; grid-template-columns: 34px minmax(0, 1fr) 64px 103px; align-items: center; min-height: 59px; column-gap: 6px; border-bottom: 1px solid #f0f2ef; }
 .player-row:last-child { border-bottom: 0; }
 .avatar { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: #edf2e8; color: #617c53; font-size: 11px; font-weight: 700; flex: 0 0 auto; }
 .avatar-1 { background: #f8ebe4; color: #ba7658; }
@@ -99,6 +106,7 @@ h1, h2, p { margin-top: 0; }
 .return-button { color: var(--green); }
 .panel-hint { margin: 12px 0 0; color: #8a968e; font-size: 11px; }
 .add-player-form { display: grid; grid-template-columns: minmax(70px, 1fr) 115px auto; gap: 7px; margin: -3px 0 12px; }
+.reclub-import-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 7px; margin: -3px 0 12px; }
 .text-input { width: 100%; min-width: 0; padding: 10px 11px; color: var(--ink); background: #fff; border: 1px solid #dfe5df; border-radius: 7px; font-size: 12px; outline: none; }
 .text-input:focus { border-color: #80a88e; box-shadow: 0 0 0 3px #245c4518; }
 .text-input::placeholder { color: #aab3ac; }
@@ -129,10 +137,17 @@ h1, h2, p { margin-top: 0; }
 .match-warning { position: relative; margin-top: 10px; color: #a16e32; font-size: 9px; font-weight: 700; }
 .warning-help { display: block; margin-top: 4px; color: #91794f; font-weight: 400; line-height: 1.4; }
 .match-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
-.waiting-section { margin-top: 15px; padding-top: 13px; border-top: 1px solid #eef1ed; }
+.waiting-section { display: flex; flex: 1 0 auto; flex-direction: column; margin-top: 15px; padding-top: 13px; border-top: 1px solid #eef1ed; }
 .waiting-heading { display: flex; align-items: center; margin-bottom: 9px; }
 .waiting-heading .eyebrow { margin: 0; }
 .waiting-cards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 7px; }
+.waiting-cards.has-pagination { grid-template-rows: repeat(3, minmax(50px, auto)); }
+.list-pagination { display: flex; flex: 0 0 auto; align-items: center; justify-content: center; gap: 10px; width: 100%; margin-top: auto; padding-top: 12px;}
+.roster-content > .list-pagination { position: absolute; right: 0; bottom: 0; left: 0; margin-top: 0; }
+.list-pagination > span { color: #64746a; font-size: 10px; font-weight: 700; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.list-pagination .button { width: auto; min-width: 92px; min-height: 38px; padding: 8px 10px; border: 1px solid #e6ebe6; border-radius: 8px; background: #f5f7f4; color: #43594b; }
+.list-pagination .button:hover:not(:disabled) { border-color: #d7e3d9; background: #eaf2ec; color: var(--green); }
+.list-pagination .button:disabled { border-color: #eff1ef; background: #f8f9f8; color: #a5afa8; opacity: 1; }
 .waiting-card { display: flex; align-items: center; min-width: 0; gap: 8px; padding: 8px; border: 1px solid #edf1ec; border-radius: 8px; background: #fbfcfa; }
 .waiting-card .avatar { width: 30px; height: 30px; }
 .waiting-player-info { min-width: 0; flex: 1; }
@@ -140,6 +155,7 @@ h1, h2, p { margin-top: 0; }
 .waiting-player-info strong { color: #43564a; font-size: 10px; }
 .waiting-player-info span { margin-top: 2px; color: #7c8b81; font-size: 8px; }
 .waiting-player-info small { margin-top: 2px; color: #a0aaa2; font-size: 8px; }
+.waiting-player-info small .waiting-timer { display: inline; font-variant-numeric: tabular-nums; }
 .muted { color: #8d9991; font-size: 11px; }
 .empty-state { display: flex; flex-direction: column; align-items: center; gap: 8px; min-height: 150px; justify-content: center; color: #89958d; text-align: center; }
 .empty-state strong { color: #4a5e51; font-size: 12px; }
@@ -185,6 +201,9 @@ td strong { color: #34473b; }
 .final-panel { background: #edf5ee; border-color: #dce9dd; }
 .final-panel h2 { margin: 0 0 6px; font: 800 19px Manrope, sans-serif; }
 .final-panel > p:not(.eyebrow) { color: #6a7b6f; font-size: 12px; }
+.session-summary-panel { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin: 0 0 19px; }
+.session-summary-panel > div:first-child > p:not(.eyebrow) { margin-bottom: 0; color: #6a7b6f; font-size: 12px; }
+.summary-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 .feedback-required { color: #9a6227 !important; font-weight: 700; }
 .feedback-confirmation { color: #326644 !important; }
 .page-footer { padding: 25px 0 5px; color: #a3ada6; text-align: center; font-size: 10px; }
@@ -266,12 +285,19 @@ td strong { color: #34473b; }
   .session-actions .button { flex: 1; min-height: 44px; padding: 9px 10px; }
   .match-actions .button, .queue-actions .button { min-height: 40px; }
   .waiting-card .icon-button { width: 40px; height: 40px; }
+  .list-pagination { gap: 6px; margin-top: auto; padding-top: 10px; }
+  .list-pagination > span { font-size: 9px; }
+  .list-pagination .button { min-width: 78px; min-height: 40px; padding: 7px 5px; font-size: 10px; }
   .stat-strip { grid-template-columns: repeat(2, 1fr); }
   .stat { min-height: 82px; padding: 13px; }
   .stat-queue strong { font-size: 13px; }
   .panel { padding: 14px 12px; }
+  .session-summary-panel { align-items: flex-start; flex-direction: column; }
+  .summary-actions { width: 100%; }
+  .summary-actions .button { flex: 1; min-height: 44px; }
   .match-list { grid-template-columns: 1fr; }
   .waiting-cards { grid-template-columns: 1fr; }
+  .waiting-cards.has-pagination { grid-template-rows: repeat(6, minmax(50px, auto)); }
   .settings-grid { grid-template-columns: 1fr; gap: 14px; }
   .setting-tooltip,
   .settings-grid > :nth-child(n) .setting-tooltip {
@@ -291,6 +317,7 @@ td strong { color: #34473b; }
   .queue-actions { justify-content: flex-start; }
   .add-player-form { grid-template-columns: minmax(0, 1fr) minmax(95px, 120px); }
   .add-player-form button { grid-column: 1 / -1; }
+  .reclub-import-form { grid-template-columns: minmax(0, 1fr); }
   .player-row {
     grid-template-columns: 34px minmax(0, 1fr) auto;
     grid-template-rows: auto auto;

@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#f5f7f2">
     <title>PickleQueue ni Loyloy — Session manager</title>
-    <link rel="stylesheet" href="./styles.css">
+    <link rel="stylesheet" href="./styles.css?v=4">
   </head>
   <body>
     <main id="app" class="app-shell" aria-live="polite"></main>
@@ -95,6 +95,8 @@
         <input id="organizer-dialog-name" name="name" class="text-input" required maxlength="70" autocomplete="name">
         <label class="field-label" for="organizer-dialog-contact">Contact number</label>
         <input id="organizer-dialog-contact" name="contactNumber" class="text-input" type="tel" required minlength="7" maxlength="25" autocomplete="tel">
+        <label class="field-label" for="organizer-dialog-email">Email address</label>
+        <input id="organizer-dialog-email" name="email" class="text-input" type="email" required maxlength="254" autocomplete="email">
         <label class="field-label" for="organizer-dialog-club">Club name <span class="muted">(optional)</span></label>
         <input id="organizer-dialog-club" name="clubName" class="text-input" maxlength="80" autocomplete="organization">
         <label class="field-label" for="organizer-dialog-court">Court / venue name</label>
@@ -119,6 +121,21 @@
         <p class="dialog-hint">Your feedback will be included in the final session email.</p>
         <div class="dialog-actions">
           <button type="submit" class="button button-primary">Submit feedback</button>
+        </div>
+      </form>
+    </dialog>
+    <dialog id="confirm-dialog" class="result-dialog">
+      <form id="confirm-form" method="dialog">
+        <div class="dialog-heading">
+          <div>
+            <p class="eyebrow" id="confirm-eyebrow">CONFIRM ACTION</p>
+            <h2 id="confirm-title">Are you sure?</h2>
+          </div>
+        </div>
+        <p class="dialog-hint" id="confirm-message"></p>
+        <div class="dialog-actions">
+          <button type="button" class="button button-quiet" data-action="cancel-confirm">Cancel</button>
+          <button type="submit" class="button button-danger-quiet" id="confirm-accept">Confirm</button>
         </div>
       </form>
     </dialog>

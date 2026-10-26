@@ -1,14 +1,14 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  addPlayer, cancelProposedMatch, createSession, endSession, generateMatches, getStatistics, pauseSession, updateOrganizerDetails, updatePlayer,
+  addPlayer, cancelProposedMatch, createSession, endSession, generateMatches, getStatistics, importRestingPlayers, pauseSession, updateOrganizerDetails, updatePlayer,
   recordResult, removePlayer, resumeSession, setPlayerAvailability, startMatch, startSession,
   createCustomMatch, editQueuedMatch, editInProgressMatch, editCompletedScore,
   pauseMatch, resumeMatch, stopMatch
 } from "../src/domain.js";
 
 function fixture({ format = "doubles", count = 8, strategy = "fair", courts = 2 } = {}) {
-  const session = createSession({ name: "Test session", courts, format, strategy });
+  const session = createSession({ name: "Test session", courts, format, strategy, organizerEmail: "organizer@example.com" });
   for (let index = 0; index < count; index += 1) {
     addPlayer(session, { name: `Player ${index + 1}`, skill: (index % 5) + 1 });
   }
@@ -22,6 +22,79 @@ test("forms distinct doubles teams and respects available courts", () => {
   assert.equal(matches.length, 2);
   assert.equal(new Set(matches.flatMap((match) => match.playerIds)).size, 8);
   assert.ok(matches.every((match) => match.playerIds.length === 4 && match.teams.every((team) => team.length === 2)));
+  assert.deepEqual(matches.map((match) => match.court), [1, 2]);
+  startMatch(session, matches[0].id);
+  assert.equal(matches[0].court, 1);
+  assert.equal(matches[1].court, 2);
+});
+
+test("custom matches receive a court number when queued", () => {
+  const session = fixture({ count: 12, courts: 2 });
+  startSession(session);
+  const waiting = session.players.filter((player) =>
+    !session.matches.some((match) => match.status === "proposed" && match.playerIds.includes(player.id)));
+  const custom = createCustomMatch(session, [
+    waiting.slice(0, 2).map((player) => player.id),
+    waiting.slice(2, 4).map((player) => player.id)
+  ]);
+  assert.equal(custom.status, "proposed");
+  assert.equal(custom.court, 1);
+});
+
+test("imported players are intermediate, resting, and receive unique names", () => {
+  const session = fixture({ count: 1 });
+  const imported = importRestingPlayers(session, ["Player 1", " Alex ", "Alex", "Alex (2)"]);
+
+  assert.deepEqual(imported.map((player) => player.name), ["Player 1 (2)", "Alex", "Alex (3)", "Alex (2)"]);
+  assert.ok(imported.every((player) => player.skill === 3 && player.status === "resting" && player.waitSince === null));
+});
+
+test("player import rejects invalid lists without adding partial players", () => {
+  const session = fixture({ count: 1 });
+  assert.throws(() => importRestingPlayers(session, ["Valid", "  "]), /Every imported player must have a name/);
+  assert.equal(session.players.length, 1);
+});
+
+test("generating after removing a queued match favors a different matchup", () => {
+  const session = fixture({ count: 12, courts: 2 });
+  startSession(session);
+  const [match] = session.matches;
+  const originalIds = new Set(match.playerIds);
+
+  cancelProposedMatch(session, match.id);
+  const generated = generateMatches(session).matches;
+
+  assert.equal(generated.length, 1);
+  const changedPlayers = generated[0].playerIds.filter((id) => !originalIds.has(id)).length;
+  assert.ok(changedPlayers > 0 && changedPlayers <= 4);
+  assert.equal(new Set(session.matches.filter((entry) => entry.status === "proposed").flatMap((entry) => entry.playerIds)).size, 8);
+});
+
+test("regeneration can replace just one player when only one is available to shuffle in", () => {
+  const session = fixture({ format: "singles", count: 3, courts: 1 });
+  startSession(session);
+  const [match] = session.matches;
+  const originalIds = new Set(match.playerIds);
+
+  cancelProposedMatch(session, match.id);
+  const generated = generateMatches(session).matches;
+
+  assert.equal(generated.length, 1);
+  assert.equal(generated[0].playerIds.filter((id) => !originalIds.has(id)).length, 1);
+});
+
+test("generating after removing a queued match reshuffles teams when no other players are available", () => {
+  const session = fixture({ count: 8, courts: 2 });
+  startSession(session);
+  const [match] = session.matches;
+  const originalTeams = match.teams.map((team) => [...team]);
+
+  cancelProposedMatch(session, match.id);
+  const generated = generateMatches(session).matches;
+
+  assert.equal(generated.length, 1);
+  assert.deepEqual([...generated[0].playerIds].sort(), originalTeams.flat().sort());
+  assert.notDeepEqual(generated[0].teams, originalTeams);
 });
 
 test("stores required organizer details and supports updating them for legacy sessions", () => {
@@ -29,6 +102,7 @@ test("stores required organizer details and supports updating them for legacy se
     name: "Organizer details test",
     organizerName: "  Loyloy  ",
     contactNumber: "  09123456789 ",
+    organizerEmail: "  loyloy@example.com ",
     clubName: "  Pickleball Friends ",
     courtName: "  Main Court "
   });
@@ -36,18 +110,27 @@ test("stores required organizer details and supports updating them for legacy se
   assert.deepEqual(session.organizer, {
     name: "Loyloy",
     contactNumber: "09123456789",
+    email: "loyloy@example.com",
     clubName: "Pickleball Friends"
   });
   assert.throws(() => updateOrganizerDetails(session, { name: " ", contactNumber: "1234567", courtName: "Court 1" }), /Enter your name/);
   assert.throws(() => updateOrganizerDetails(session, { name: "Loyloy", contactNumber: " ", courtName: "Court 1" }), /Enter your contact number/);
-  assert.throws(() => updateOrganizerDetails(session, { name: "Loyloy", contactNumber: "09123456789" }), /Enter a court name/);
-  updateOrganizerDetails(session, { name: "Organizer", contactNumber: "09123456789", courtName: "North Courts" });
+  assert.throws(() => updateOrganizerDetails(session, { name: "Loyloy", contactNumber: "09123456789", email: "invalid", courtName: "Court 1" }), /Enter a valid email address/);
+  assert.throws(() => updateOrganizerDetails(session, { name: "Loyloy", contactNumber: "09123456789", email: "loyloy@example.com" }), /Enter a court name/);
+  updateOrganizerDetails(session, { name: "Organizer", contactNumber: "09123456789", email: "organizer@example.com", courtName: "North Courts" });
   assert.equal(session.courtName, "North Courts");
   assert.deepEqual(session.organizer, {
     name: "Organizer",
     contactNumber: "09123456789",
+    email: "organizer@example.com",
     clubName: ""
   });
+});
+
+test("requires a valid organizer email address when creating a session", () => {
+  assert.throws(() => createSession({ name: "Missing email" }), /Enter a valid organizer email address/);
+  assert.throws(() => createSession({ name: "Invalid email", organizerEmail: "not-an-email" }), /Enter a valid organizer email address/);
+  assert.equal(createSession({ name: "With email", organizerEmail: "organizer@example.com" }).organizer.email, "organizer@example.com");
 });
 
 test("player names must be unique when adding and editing, ignoring case and surrounding spaces", () => {
@@ -56,8 +139,8 @@ test("player names must be unique when adding and editing, ignoring case and sur
   const second = session.players[1];
   const originalSecondName = second.name;
 
-  assert.throws(() => addPlayer(session, { name: "  pLaYeR 1  " }), /A player with that name already exists/);
-  assert.throws(() => updatePlayer(session, second.id, { name: " PLAYER 1 " }), /A player with that name already exists/);
+  assert.throws(() => addPlayer(session, { name: "  pLaYeR 1  " }), /That player name is already added/);
+  assert.throws(() => updatePlayer(session, second.id, { name: " PLAYER 1 " }), /That player name is already added/);
   assert.equal(second.name, originalSecondName);
   assert.equal(session.players.length, 2);
 
@@ -142,7 +225,7 @@ test("resting and unavailable players are excluded", () => {
 });
 
 test("skill strategy chooses a balanced feasible match and flags impossible gaps", () => {
-  const session = createSession({ name: "Skill test", courts: 1, strategy: "skill" });
+  const session = createSession({ name: "Skill test", courts: 1, strategy: "skill", organizerEmail: "organizer@example.com" });
   [3, 3, 3, 3, 1].forEach((skill, index) => addPlayer(session, { name: `Player ${index}`, skill }));
   startSession(session);
   const match = session.matches[0];
@@ -236,6 +319,21 @@ test("consecutive-game limits provide a rest rotation and allow rested players b
   const third = generateMatches(session).matches[0];
   assert.ok(third);
   assert.ok(third.playerIds.some((id) => firstIds.has(id)));
+});
+
+test("generates a match when every available player has reached the rest limit", () => {
+  const session = fixture({ count: 4, courts: 1 });
+  session.settings.restAfterConsecutiveGames = 1;
+  startSession(session);
+  const first = session.matches[0];
+  startMatch(session, first.id);
+  recordResult(session, first.id, 11, 8);
+
+  const generated = generateMatches(session);
+
+  assert.equal(generated.matches.length, 1);
+  assert.deepEqual(new Set(generated.matches[0].playerIds), new Set(first.playerIds));
+  assert.match(generated.matches[0].reason, /Played despite the rest limit/);
 });
 
 test("players with no games can be removed, but played players stay in session history", () => {
@@ -333,8 +431,9 @@ test("custom match reserves players, is labeled, and cannot be auto-generated tw
   const generated = generateMatches(session).matches;
   assert.ok(generated.length);
   assert.ok(generated.every((match) => match.playerIds.every((id) => !custom.playerIds.includes(id))));
+  assert.ok(generated.every((match) => match.court !== custom.court));
   assert.equal(custom.status, "proposed");
-  assert.equal(custom.court, null);
+  assert.equal(custom.court, 1);
 });
 
 test("queued generated matches automatically exchange players without duplicate assignments", () => {
@@ -478,10 +577,11 @@ test("stopping a game returns it to the editable queue without recording a resul
   startSession(session);
   const match = session.matches[0];
   startMatch(session, match.id);
+  const court = match.court;
   pauseMatch(session, match.id);
   stopMatch(session, match.id);
   assert.equal(match.status, "proposed");
-  assert.equal(match.court, null);
+  assert.equal(match.court, court);
   assert.equal(match.startedAt, null);
   assert.equal(match.pausedAt, null);
   assert.equal(match.totalPausedMs, 0);
@@ -559,7 +659,7 @@ test("custom match starts only after organizer action and receives an open court
   const ids = session.players.slice(0, 4).map((player) => player.id);
   const custom = createCustomMatch(session, [[ids[0], ids[1]], [ids[2], ids[3]]]);
   assert.equal(custom.status, "proposed");
-  assert.equal(custom.court, null);
+  assert.equal(custom.court, 1);
   startMatch(session, custom.id);
   assert.equal(custom.status, "inProgress");
   assert.equal(custom.court, 1);
