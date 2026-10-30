@@ -31,13 +31,13 @@ function escapeHtml(value) {
 
 function renderTable(headers, rows) {
   const header = headers.map((label) =>
-    `<th align="left" style="padding:9px 10px;background:#f4f7f4;border-bottom:1px solid #e3eae4;color:#718076;font-size:11px;font-weight:700">${escapeHtml(label)}</th>`
+    `<th align="left" style="padding:9px 10px;background:#252421;border-bottom:1px solid #34322f;color:#d3a76c;font-size:11px;font-weight:700">${escapeHtml(label)}</th>`
   ).join("");
   const body = rows.length
     ? rows.map((row) => `<tr>${row.map((cell) =>
-      `<td style="padding:9px 10px;border-bottom:1px solid #e8eee9;color:#34453a;font-size:12px;line-height:1.5;vertical-align:top">${escapeHtml(cell)}</td>`
+      `<td style="padding:9px 10px;border-bottom:1px solid #34322f;color:#f1eee8;font-size:12px;line-height:1.5;vertical-align:top">${escapeHtml(cell)}</td>`
     ).join("")}</tr>`).join("")
-    : `<tr><td colspan="${headers.length}" style="padding:12px 10px;border-bottom:1px solid #e8eee9;color:#64746b;font-size:13px">No entries yet.</td></tr>`;
+    : `<tr><td colspan="${headers.length}" style="padding:12px 10px;border-bottom:1px solid #34322f;color:#aaa69e;font-size:13px">No entries yet.</td></tr>`;
   return `<table role="table" width="100%" cellspacing="0" cellpadding="0" style="border-collapse:collapse">${headers.length ? `<thead><tr>${header}</tr></thead>` : ""}<tbody>${body}</tbody></table>`;
 }
 
@@ -80,33 +80,33 @@ export function buildReportHtml(reportType, sessionName, report) {
   const feedback = feedbackLines.replace(/^Rating:\s*(?:Not provided|\d+\/5 stars)\s*(?:\r?\n|$)/m, "").trim();
   const isEnded = reportType === "ended";
   const detailRows = details.map(([label, value]) =>
-    `<tr><th align="left" style="width:38%;padding:9px 12px;border-bottom:1px solid #e8eee9;color:#718076;font-size:12px;font-weight:600">${escapeHtml(label)}</th><td style="padding:9px 12px;border-bottom:1px solid #e8eee9;color:#26372d;font-size:13px">${escapeHtml(value)}</td></tr>`
+    `<tr><th align="left" style="width:38%;padding:9px 12px;border-bottom:1px solid #34322f;color:#c2bdb3;font-size:12px;font-weight:600">${escapeHtml(label)}</th><td style="padding:9px 12px;border-bottom:1px solid #34322f;color:#f1eee8;font-size:13px">${escapeHtml(value)}</td></tr>`
   ).join("");
   const playerTable = renderTable(["Player", "Games", "Wins", "Losses", "Win rate"], players);
   const matchTable = renderTable(["Game", "Status", "Court", "Matchup / score"], matches);
   const ratingValue = rating === "Not provided" ? "Not provided" : rating.replace("/5 stars", " / 5");
-  const starRating = rating === "Not provided" ? "" : `<span style="color:#d49a32;font-size:18px;letter-spacing:2px">${"★".repeat(Number.parseInt(rating, 10))}</span>`;
+  const starRating = rating === "Not provided" ? "" : `<span style="color:#c89d62;font-size:18px;letter-spacing:2px">${"★".repeat(Number.parseInt(rating, 10))}</span>`;
   const section = (title, content) =>
-    `<tr><td style="padding:0 28px 22px"><h2 style="margin:0 0 10px;color:#24372b;font-size:16px;line-height:1.4">${title}</h2>${content}</td></tr>`;
+    `<tr><td style="padding:0 28px 22px"><h2 style="margin:0 0 10px;color:#d3a76c;font-size:16px;line-height:1.4">${title}</h2>${content}</td></tr>`;
 
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:24px 12px;background:#f2f5f2;font-family:Arial,Helvetica,sans-serif;color:#24372b">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#fff;border:1px solid #e3eae4;border-radius:14px;overflow:hidden">
-    <tr><td style="padding:26px 28px;background:#1f6b4b;color:#fff">
-      <p style="margin:0 0 8px;color:#d8eee0;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Gear Up Rally</p>
+<body style="margin:0;padding:24px 12px;background:#111;font-family:Arial,Helvetica,sans-serif;color:#f1eee8">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:640px;margin:0 auto;background:#1b1a18;border:1px solid #34322f;border-radius:14px;overflow:hidden">
+    <tr><td style="padding:26px 28px;background:#111;border-bottom:2px solid #c89d62;color:#f1eee8">
+      <p style="margin:0 0 8px;color:#d3a76c;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Gear Up Rally</p>
       <h1 style="margin:0;font-size:24px;line-height:1.3">${isEnded ? "Session complete" : "Session started"}</h1>
-      <p style="margin:7px 0 0;color:#e7f3eb;font-size:15px">${escapeHtml(sessionName)}</p>
+      <p style="margin:7px 0 0;color:#c2bdb3;font-size:15px">${escapeHtml(sessionName)}</p>
     </td></tr>
     <tr><td style="padding:22px 28px 12px">
-      <p style="margin:0 0 7px;color:#718076;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase">Session details</p>
+      <p style="margin:0 0 7px;color:#d3a76c;font-size:11px;font-weight:700;letter-spacing:1.2px;text-transform:uppercase">Session details</p>
       <table role="presentation" width="100%" cellspacing="0" cellpadding="0">${detailRows}</table>
     </td></tr>
     ${playerIndex >= 0 ? section("Player statistics", playerTable) : ""}
     ${matchIndex >= 0 ? section("Match history", matchTable) : ""}
-    ${feedbackIndex >= 0 ? section("Organizer feedback", `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:10px;border:1px solid #e3eae4;border-radius:8px;background:#f8faf8"><tr><th align="left" style="width:34%;padding:11px 13px;color:#718076;font-size:12px;font-weight:600">Session rating</th><td style="padding:11px 13px;color:#26372d;font-size:13px;font-weight:700">${starRating}<span style="padding-left:8px;vertical-align:3px">${escapeHtml(ratingValue)}</span></td></tr></table><p style="margin:0;padding:13px 15px;border-radius:8px;background:#f3f7f3;color:#34453a;font-size:14px;line-height:1.6;white-space:pre-wrap">${escapeHtml(feedback || "No written feedback provided.")}</p>`) : ""}
-    <tr><td style="padding:17px 28px;border-top:1px solid #e8eee9;background:#fafcfb;color:#87938b;font-size:11px;line-height:1.5">Automatically generated by Gear Up Rally.</td></tr>
+    ${feedbackIndex >= 0 ? section("Organizer feedback", `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom:10px;border:1px solid #34322f;border-radius:8px;background:#22211f"><tr><th align="left" style="width:34%;padding:11px 13px;color:#c2bdb3;font-size:12px;font-weight:600">Session rating</th><td style="padding:11px 13px;color:#f1eee8;font-size:13px;font-weight:700">${starRating}<span style="padding-left:8px;vertical-align:3px">${escapeHtml(ratingValue)}</span></td></tr></table><p style="margin:0;padding:13px 15px;border-radius:8px;background:#252421;color:#f1eee8;font-size:14px;line-height:1.6;white-space:pre-wrap">${escapeHtml(feedback || "No written feedback provided.")}</p>`) : ""}
+    <tr><td style="padding:17px 28px;border-top:1px solid #34322f;background:#151412;color:#aaa69e;font-size:11px;line-height:1.5">Automatically generated by Gear Up Rally.</td></tr>
   </table>
 </body>
 </html>`;
@@ -116,19 +116,19 @@ export function buildThankYouHtml(organizerName, sessionName) {
   return `<!doctype html>
 <html lang="en">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
-<body style="margin:0;padding:24px 12px;background:#f2f5f2;font-family:Arial,Helvetica,sans-serif;color:#24372b">
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#fff;border:1px solid #e3eae4;border-radius:14px;overflow:hidden">
-    <tr><td style="padding:28px;background:#1f6b4b;color:#fff">
-      <p style="margin:0 0 10px;color:#d8eee0;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Gear Up Rally</p>
+<body style="margin:0;padding:24px 12px;background:#111;font-family:Arial,Helvetica,sans-serif;color:#f1eee8">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="max-width:600px;margin:0 auto;background:#1b1a18;border:1px solid #34322f;border-radius:14px;overflow:hidden">
+    <tr><td style="padding:28px;background:#111;border-bottom:2px solid #c89d62;color:#f1eee8">
+      <p style="margin:0 0 10px;color:#d3a76c;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase">Gear Up Rally</p>
       <h1 style="margin:0;font-size:26px;line-height:1.3">Thanks for playing!</h1>
     </td></tr>
     <tr><td style="padding:28px">
       <p style="margin:0 0 14px;font-size:17px;line-height:1.5">Hi ${escapeHtml(organizerName)},</p>
-      <p style="margin:0 0 14px;color:#52635a;font-size:15px;line-height:1.7">Thanks for using Gear Up Rally to organize <strong style="color:#24372b">${escapeHtml(sessionName)}</strong>. We hope it made your games easier to run and more fun to play.</p>
-      <p style="margin:0 0 22px;color:#52635a;font-size:15px;line-height:1.7">Thanks for sharing your feedback, too. It helps us make the app better for your next session.</p>
-      <p style="margin:0;color:#1f6b4b;font-size:15px;font-weight:700;line-height:1.6">See you on the court!<br><span style="color:#52635a;font-weight:400">The Gear Up Rally team</span></p>
+      <p style="margin:0 0 14px;color:#c2bdb3;font-size:15px;line-height:1.7">Thanks for using Gear Up Rally to organize <strong style="color:#f1eee8">${escapeHtml(sessionName)}</strong>. We hope it made your games easier to run and more fun to play.</p>
+      <p style="margin:0 0 22px;color:#c2bdb3;font-size:15px;line-height:1.7">Thanks for sharing your feedback, too. It helps us make the app better for your next session.</p>
+      <p style="margin:0;color:#d3a76c;font-size:15px;font-weight:700;line-height:1.6">See you on the court!<br><span style="color:#c2bdb3;font-weight:400">The Gear Up Rally team</span></p>
     </td></tr>
-    <tr><td style="padding:16px 28px;border-top:1px solid #e8eee9;background:#fafcfb;color:#87938b;font-size:11px;line-height:1.5">This is an automatic thank-you for your completed session.</td></tr>
+    <tr><td style="padding:16px 28px;border-top:1px solid #34322f;background:#151412;color:#aaa69e;font-size:11px;line-height:1.5">This is an automatic thank-you for your completed session.</td></tr>
   </table>
 </body>
 </html>`;

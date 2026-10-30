@@ -44,7 +44,7 @@ let waitingPage = 0;
 let rosterAnchorIndexAfterResize = null;
 let pendingSessionAction;
 let resolveConfirmation;
-let theme = "light";
+let theme = "dark";
 const themeStorageKey = "gear-up-rally.theme.v1";
 const legacyThemeStorageKey = "picklequeue.theme.v1";
 
@@ -63,7 +63,7 @@ try {
       localStorage.removeItem(legacyThemeStorageKey);
     }
   }
-  theme = savedTheme === "dark" ? "dark" : "light";
+  theme = savedTheme === "light" ? "light" : "dark";
 } catch (error) {
   notice = `Error: Could not read the theme preference: ${error.message}`;
 }

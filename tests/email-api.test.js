@@ -39,6 +39,9 @@ test("HTML report email renders a formatted summary and escapes user-provided co
   assert.match(html, /Session rating/);
   assert.match(html, /5 \/ 5/);
   assert.match(html, /★★★★★/);
+  assert.match(html, /background:#111/);
+  assert.match(html, /#c89d62/);
+  assert.doesNotMatch(html, /#1f6b4b|#f2f5f2|#e3eae4/);
   assert.match(html, /<th[^>]*>Games<\/th>/);
   assert.match(html, /<th[^>]*>Win rate<\/th>/);
   assert.match(html, /<th[^>]*>Matchup \/ score<\/th>/);
@@ -52,6 +55,9 @@ test("HTML report email renders a formatted summary and escapes user-provided co
 test("thank-you email is personalized, polished, and escapes user content", () => {
   const html = buildThankYouHtml("Alex <b>Player</b>", "Saturday & Friends");
   assert.match(html, /Thanks for playing!/);
+  assert.match(html, /background:#111/);
+  assert.match(html, /#d3a76c/);
+  assert.doesNotMatch(html, /#1f6b4b|#f2f5f2|#e3eae4/);
   assert.match(html, /Alex &lt;b&gt;Player&lt;\/b&gt;/);
   assert.match(html, /Saturday &amp; Friends/);
   assert.doesNotMatch(html, /<b>Player<\/b>/);
