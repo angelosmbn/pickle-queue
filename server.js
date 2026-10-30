@@ -136,5 +136,5 @@ const server = createServer(async (req, res) => {
 });
 
 server.listen(port, host, () => {
-  console.log(`PickleQueue is running at http://${host}:${port}`);
+  console.log(`Gear Up Rally is running at http://${host}:${port}`);
 });

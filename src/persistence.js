@@ -1,7 +1,14 @@
-import { STORAGE_KEY } from "./domain.js";
+import { LEGACY_STORAGE_KEY, STORAGE_KEY } from "./domain.js";
 
 export function loadSession() {
-  const raw = localStorage.getItem(STORAGE_KEY);
+  let raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) {
+    raw = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (raw) {
+      localStorage.setItem(STORAGE_KEY, raw);
+      localStorage.removeItem(LEGACY_STORAGE_KEY);
+    }
+  }
   if (!raw) return null;
   try {
     const session = JSON.parse(raw);
@@ -24,4 +31,5 @@ export function saveSession(session) {
 
 export function clearSession() {
   localStorage.removeItem(STORAGE_KEY);
+  localStorage.removeItem(LEGACY_STORAGE_KEY);
 }

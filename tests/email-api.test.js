@@ -5,7 +5,7 @@ import handler, { buildReportHtml, buildThankYouHtml } from "../api/send-report.
 
 test("HTML report email renders a formatted summary and escapes user-provided content", () => {
   const html = buildReportHtml("ended", "Club <script>", [
-    "PickleQueue ni Loyloy — Session ended",
+    "Gear Up Rally — Session ended",
     "",
     "Organizer: Alex & Sam",
     "Contact number: 123456789",
@@ -175,7 +175,7 @@ test("ended report sends the final report and a thank-you to the organizer", asy
     assert.equal(messages[0].to, "reports@example.com");
     assert.match(messages[0].subject, /Session ended/);
     assert.equal(messages[1].to, "alex@example.com");
-    assert.match(messages[1].subject, /Thanks for using PickleQueue/);
+    assert.match(messages[1].subject, /Thanks for using Gear Up Rally/);
     assert.match(messages[1].html, /Thanks for playing!/);
   } finally {
     nodemailer.createTransport = originalCreateTransport;

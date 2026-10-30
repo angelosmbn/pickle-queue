@@ -44,6 +44,9 @@ let waitingPage = 0;
 let rosterAnchorIndexAfterResize = null;
 let pendingSessionAction;
 let resolveConfirmation;
+let theme = "light";
+const themeStorageKey = "gear-up-rally.theme.v1";
+const legacyThemeStorageKey = "picklequeue.theme.v1";
 
 try {
   session = loadSession();
@@ -51,18 +54,48 @@ try {
   notice = `Error: ${error.message}`;
 }
 
+try {
+  let savedTheme = localStorage.getItem(themeStorageKey);
+  if (!savedTheme) {
+    savedTheme = localStorage.getItem(legacyThemeStorageKey);
+    if (savedTheme === "light" || savedTheme === "dark") {
+      localStorage.setItem(themeStorageKey, savedTheme);
+      localStorage.removeItem(legacyThemeStorageKey);
+    }
+  }
+  theme = savedTheme === "dark" ? "dark" : "light";
+} catch (error) {
+  notice = `Error: Could not read the theme preference: ${error.message}`;
+}
+
+document.documentElement.dataset.theme = theme;
+document.documentElement.dataset.page = session ? "session" : "welcome";
+document.querySelector('meta[name="theme-color"]').content = !session || theme === "dark" ? "#111111" : "#f5f4f1";
+
 function persist() {
   if (session) saveSession(session);
 }
 
+function themeToggle() {
+  const darkMode = theme === "dark";
+  const action = darkMode ? "Switch to light mode" : "Switch to dark mode";
+  return `<button class="theme-toggle" type="button" role="switch" data-action="toggle-theme" aria-label="Dark mode" aria-checked="${darkMode}" title="${action}">
+    <span class="theme-switch-icon theme-switch-sun" aria-hidden="true"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"></circle><path d="M12 2v2m0 16v2M4.93 4.93l1.42 1.42m11.3 11.3 1.42 1.42M2 12h2m16 0h2M4.93 19.07l1.42-1.42m11.3-11.3 1.42-1.42"></path></svg></span>
+    <span class="theme-switch-icon theme-switch-moon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M20.2 15.4A8.5 8.5 0 0 1 8.6 3.8 8.5 8.5 0 1 0 20.2 15.4Z"></path></svg></span>
+    <span class="theme-switch-thumb" aria-hidden="true"></span>
+  </button>`;
+}
+
 function render() {
+  document.documentElement.dataset.page = session ? "session" : "welcome";
+  document.querySelector('meta[name="theme-color"]').content = !session || theme === "dark" ? "#111111" : "#f5f4f1";
   updateToast();
   if (!session) {
     app.innerHTML = `
       <section class="welcome">
-        <div class="welcome-mark">PQL</div>
-        <p class="eyebrow">YOUR CLUB, IN GOOD ROTATION</p>
-        <h1>Make every court<br>feel like <em>your court.</em></h1>
+        <img class="welcome-logo" src="./assets/gear-up-logo.png" alt="Gear Up Sports Complex">
+        <p class="eyebrow welcome-eyebrow">GEAR UP RALLY · COURT SESSION MANAGER</p>
+        <h1>Run the court.<br>Keep the <em>rally</em> moving.</h1>
         <p class="welcome-copy">Fair, easy-to-run pickleball sessions—without a clipboard full of matchups.</p>
         ${createFormOpen ? `<form id="create-form" class="setup-card" novalidate>
         <label class="field-label" for="organizer-name">Your name</label>
@@ -126,10 +159,11 @@ function render() {
 
   app.innerHTML = `
     <header class="topbar">
-      <a class="brand" href="#" aria-label="PickleQueue ni Loyloy home"><span class="brand-mark">PQL</span><span>PickleQueue ni Loyloy</span></a>
+      <a class="brand" href="#" aria-label="Gear Up Rally home"><img class="brand-logo" src="./assets/gear-up-logo.png" alt="Gear Up Sports Complex"><span class="brand-divider" aria-hidden="true"></span><span class="brand-product">GEAR UP RALLY</span></a>
       <div class="topbar-right">
         <span class="save-status"><span class="status-dot"></span> Saved on this device</span>
         ${session.status === "completed" ? '<span class="pill pill-done">Session complete</span>' : `<span class="pill pill-${session.status}">${titleCase(session.status)}</span>`}
+        ${themeToggle()}
       </div>
     </header>
     <div class="page">
@@ -176,7 +210,7 @@ function render() {
             <div class="roster-list ${lineupPlayers.length > rosterPageSize ? "has-pagination" : ""}">
               ${visiblePlayers.length ? visiblePlayers.map((player) => playerRow(player, playingIds, proposedIds, pausedIds)).join("") :
                 lineupSearch ? '<div class="empty-state"><strong>No matching players</strong><span>Try a different name.</span></div>' :
-                  '<div class="empty-state"><span class="empty-icon">♧</span><strong>Your lineup starts here</strong><span>Add players to get the session going.</span></div>'}
+                  '<div class="empty-state"><span class="empty-icon" aria-hidden="true"><svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13" fill="#c89d62"/><circle cx="12" cy="10" r="1.5" fill="#111"/><circle cx="20" cy="11" r="1.5" fill="#111"/><circle cx="9" cy="17" r="1.5" fill="#111"/><circle cx="16" cy="16" r="1.5" fill="#111"/><circle cx="23" cy="18" r="1.5" fill="#111"/><circle cx="12" cy="23" r="1.5" fill="#111"/><circle cx="20" cy="23" r="1.5" fill="#111"/></svg></span><strong>Your lineup starts here</strong><span>Add players to get the session going.</span></div>'}
             </div>
             ${session.status === "draft" ? '<p class="panel-hint">Add at least 2 players for singles or 4 for doubles, then start.</p>' : ""}
             ${paginationControls("roster-page", rosterPage, rosterPageCount, lineupPlayers.length)}
@@ -262,7 +296,7 @@ function render() {
             <p class="roster-manager-hint">Players with recorded games cannot be removed. Changing the status of queued players cancels their queued matches.</p>
           </section>
         </div>` : ""}
-      <footer class="page-footer">PickleQueue ni Loyloy <span>·</span> Fair play, better rotations.</footer>
+      <footer class="page-footer">Gear Up Sports Complex <span>·</span> Gear Up Rally <span>·</span> Fair play, better rotations.</footer>
     </div>`;
   requestAnimationFrame(syncDashboardPanels);
 }
@@ -327,14 +361,24 @@ function fitRosterPageSize() {
 window.addEventListener("resize", () => requestAnimationFrame(syncDashboardPanels));
 
 function sessionControls() {
+  let controls = "";
+  const canDelete = ["draft", "paused"].includes(session.status);
   if (session.status === "draft") {
     const needed = session.format === "doubles" ? 4 : 2;
     const available = session.players.filter((player) => ["active", "resting"].includes(player.status)).length;
-    return `<button class="button button-primary" data-action="start-session" ${available < needed ? "disabled" : ""}>Start session <span aria-hidden="true">→</span></button>`;
+    controls = `<button class="button button-primary" data-action="start-session" ${available < needed ? "disabled" : ""}>Start session <span aria-hidden="true">→</span></button>`;
+  } else if (session.status === "active") {
+    controls = '<button class="button button-pause" data-action="pause-session">Ⅱ Pause session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
+  } else if (session.status === "paused") {
+    controls = '<button class="button button-primary" data-action="resume-session">Resume session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
   }
-  if (session.status === "active") return '<button class="button button-pause" data-action="pause-session">Ⅱ Pause session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
-  if (session.status === "paused") return '<button class="button button-primary" data-action="resume-session">Resume session</button><button class="button button-danger-quiet" data-action="end-session">End session</button>';
-  return "";
+  const deleteButton = canDelete
+    ? '<button class="button session-delete-button" data-action="delete-session" aria-label="Delete session" title="Delete session"><svg viewBox="3 3 18 18" aria-hidden="true"><path d="M4 7h16M10 11v6m4-6v6M5 7l1 13h12l1-13M9 7V4h6v3"></path></svg></button>'
+    : "";
+  const deleteSpacer = session.status === "active"
+    ? '<span class="session-delete-spacer" aria-hidden="true"></span>'
+    : "";
+  return `${deleteButton}${deleteSpacer}${controls}`;
 }
 
 function playerRow(player, playingIds, proposedIds, pausedIds) {
@@ -647,7 +691,7 @@ function buildSessionReport(reportType) {
   const statusName = reportType === "started" ? "Session started" : "Session ended";
   const organizer = session.organizer ?? {};
   const lines = [
-    `PickleQueue ni Loyloy — ${statusName}`,
+    `Gear Up Rally — ${statusName}`,
     "",
     `Organizer: ${organizer.name || "Not provided"}`,
     `Contact number: ${organizer.contactNumber || "Not provided"}`,
@@ -958,6 +1002,15 @@ app.addEventListener("click", async (event) => {
   if (!button) return;
   const { action, id } = button.dataset;
   try {
+    if (action === "toggle-theme") {
+      const nextTheme = theme === "dark" ? "light" : "dark";
+      localStorage.setItem(themeStorageKey, nextTheme);
+      theme = nextTheme;
+      document.documentElement.dataset.theme = theme;
+      document.querySelector('meta[name="theme-color"]').content = theme === "dark" ? "#111111" : "#f5f4f1";
+      render();
+      return;
+    }
     if (action === "show-create-form") {
       createFormOpen = true;
       render();
@@ -1093,6 +1146,28 @@ app.addEventListener("click", async (event) => {
     }
     if (action === "record-result") openResult(id);
     if (action === "edit-score") openResult(id, true);
+    if (action === "delete-session") {
+      if (!await requestConfirmation({
+        title: "Delete this session?",
+        message: "This permanently removes the session, player list, matches, and results saved on this device. You’ll return to the home screen.",
+        confirmLabel: "Delete session",
+        eyebrow: "DELETE SESSION"
+      })) return;
+      clearSession();
+      session = null;
+      createFormOpen = false;
+      addFormOpen = false;
+      reclubImportOpen = false;
+      rosterManagerOpen = false;
+      selectedPlayerIds.clear();
+      lineupSearch = "";
+      rosterManagerSearch = "";
+      rosterPage = 0;
+      waitingPage = 0;
+      notice = "";
+      render();
+      return;
+    }
     if (action === "new-session") {
       if (!session.feedback) {
         feedbackForm.reset();

@@ -1,4 +1,4 @@
-# PickleQueue ni Loyloy
+# Gear Up Rally
 
 A local-first pickleball session manager for a single organizer. Run `npm start` to serve the app locally, including the Reclub import API, and run the tests with `npm test`.
 

@@ -1,4 +1,5 @@
-export const STORAGE_KEY = "picklequeue.session.v1";
+export const STORAGE_KEY = "gear-up-rally.session.v1";
+export const LEGACY_STORAGE_KEY = "picklequeue.session.v1";
 
 export const SKILLS = [
   { label: "Beginner", value: 1 },
