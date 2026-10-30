@@ -5,7 +5,7 @@ import {
   recordResult, removePlayer, resumeSession, setPlayerAvailability, startMatch, startSession,
   createCustomMatch, editQueuedMatch, editInProgressMatch, editCompletedScore,
   pauseMatch, resumeMatch, stopMatch
-} from "../src/domain.js";
+} from "../public/src/domain.js";
 
 function fixture({ format = "doubles", count = 8, strategy = "fair", courts = 2 } = {}) {
   const session = createSession({ name: "Test session", courts, format, strategy, organizerEmail: "organizer@example.com" });

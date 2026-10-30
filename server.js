@@ -5,7 +5,7 @@ import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import reclubImport from "./api/reclub-import.js";
 
-const root = resolve(fileURLToPath(new URL(".", import.meta.url)));
+const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
 const host = process.env.HOST || (process.env.VERCEL ? "0.0.0.0" : "127.0.0.1");
 const port = Number(process.env.PORT || 5173);
 const mimeTypes = {

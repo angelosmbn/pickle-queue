@@ -1,6 +1,6 @@
 # Gear Up Rally
 
-A local-first pickleball session manager for a single organizer. Run `npm start` to serve the app locally, including the Reclub import API, and run the tests with `npm test`.
+A local-first pickleball session manager for a single organizer. The frontend lives in `public/` so Vercel can serve it as static assets; run `npm start` to serve the app locally, including the Reclub import API, and run the tests with `npm test`.
 
 ## What it includes
 
