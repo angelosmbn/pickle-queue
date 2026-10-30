@@ -4,6 +4,7 @@ import { createServer } from "node:http";
 import { extname, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import reclubImport from "./api/reclub-import.js";
+import sendReport from "./api/send-report.js";
 
 const root = resolve(fileURLToPath(new URL(".", import.meta.url)), "public");
 const host = process.env.HOST || (process.env.VERCEL ? "0.0.0.0" : "127.0.0.1");
@@ -19,18 +20,34 @@ const mimeTypes = {
   ".webp": "image/webp"
 };
 const maxRequestBytes = 4096;
+const maxReportRequestBytes = 64 * 1024;
 
 function sendJson(res, status, payload) {
   res.writeHead(status, { "content-type": "application/json; charset=utf-8" });
   res.end(JSON.stringify(payload));
 }
 
-async function parseJsonBody(req, res) {
+function createApiResponse(res) {
+  return {
+    headers: {},
+    setHeader(name, value) { this.headers[name] = value; },
+    status(code) { this.statusCode = code; return this; },
+    json(payload) {
+      res.writeHead(this.statusCode, {
+        ...this.headers,
+        "content-type": "application/json; charset=utf-8"
+      });
+      res.end(JSON.stringify(payload));
+    }
+  };
+}
+
+async function parseJsonBody(req, res, maxBytes = maxRequestBytes) {
   const chunks = [];
   let totalBytes = 0;
   for await (const chunk of req) {
     totalBytes += chunk.length;
-    if (totalBytes > maxRequestBytes) {
+    if (totalBytes > maxBytes) {
       sendJson(res, 413, { error: "The request is too large." });
       req.resume();
       return null;
@@ -92,34 +109,39 @@ const server = createServer(async (req, res) => {
     return;
   }
 
-  if (pathname === "/api/reclub-import") {
+  if (pathname === "/api/reclub-import" || pathname === "/api/send-report") {
     if (req.method !== "POST") {
-      res.writeHead(405, { allow: "POST" }).end("Method not allowed");
+      if (pathname === "/api/send-report") {
+        const apiResponse = createApiResponse(res);
+        await sendReport({ method: req.method, headers: req.headers }, apiResponse);
+      } else {
+        res.writeHead(405, { allow: "POST" }).end("Method not allowed");
+      }
       return;
     }
-    const body = await parseJsonBody(req, res);
+    const body = await parseJsonBody(
+      req,
+      res,
+      pathname === "/api/send-report" ? maxReportRequestBytes : maxRequestBytes
+    );
     if (res.writableEnded) return;
-    const apiResponse = {
-      headers: {},
-      setHeader(name, value) { this.headers[name] = value; },
-      status(code) { this.statusCode = code; return this; },
-      json(payload) {
-        res.writeHead(this.statusCode, {
-          ...this.headers,
-          "content-type": "application/json; charset=utf-8"
-        });
-        res.end(JSON.stringify(payload));
-      }
-    };
+    const apiResponse = createApiResponse(res);
     try {
-      await reclubImport({
+      const request = {
         method: req.method,
         headers: req.headers,
         body
-      }, apiResponse);
+      };
+      if (pathname === "/api/send-report") await sendReport(request, apiResponse);
+      else await reclubImport(request, apiResponse);
     } catch (error) {
-      console.error("Local Reclub import request failed:", error);
-      if (!res.writableEnded) sendJson(res, 500, { error: "The Reclub import request failed." });
+      if (pathname === "/api/send-report") {
+        console.error("Session report request failed:", error);
+        if (!res.writableEnded) sendJson(res, 500, { error: "The session report request failed." });
+      } else {
+        console.error("Local Reclub import request failed:", error);
+        if (!res.writableEnded) sendJson(res, 500, { error: "The Reclub import request failed." });
+      }
     }
     return;
   }
