@@ -201,6 +201,10 @@ h1, h2, p { margin-top: 0; }
 .match-warning { position: relative; margin-top: 10px; color: #a16e32; font-size: 9px; font-weight: 700; }
 .warning-help { display: block; margin-top: 4px; color: #91794f; font-weight: 400; line-height: 1.4; }
 .match-actions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 12px; }
+.match-preview { border-style: dashed; }
+.upcoming-section { margin-top: 15px; padding-top: 13px; border-top: 1px solid #eef1ed; }
+.upcoming-section .waiting-heading { margin-bottom: 9px; }
+.upcoming-match-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px; }
 .waiting-section { display: flex; flex: 1 0 auto; flex-direction: column; margin-top: 15px; padding-top: 13px; border-top: 1px solid #eef1ed; }
 .waiting-heading { display: flex; align-items: center; margin-bottom: 9px; }
 .waiting-heading .eyebrow { margin: 0; }
@@ -332,6 +336,15 @@ td strong { color: #34473b; }
 .privacy-note { margin: 12px 0 0; color: #9aa49d; text-align: center; font-size: 9px; }
 .result-dialog { width: min(450px, calc(100vw - 30px)); padding: 22px; border: 0; border-radius: 14px; box-shadow: 0 15px 50px #203b2930; color: var(--ink); }
 .result-dialog::backdrop { background: #1d30277d; }
+#match-dialog { width: min(680px, calc(100vw - 32px)); max-height: min(90vh, 780px); padding: 28px; overflow-y: auto; border: 1px solid var(--border); border-radius: 18px; }
+#match-dialog .dialog-heading { margin-bottom: 22px; }
+#match-dialog .dialog-heading h2 { font-size: 24px; }
+#match-court-field { display: grid; grid-template-columns: minmax(0, 1fr) minmax(190px, 240px); align-items: center; gap: 18px; margin: 0 0 20px; padding: 14px 16px; border: 1px solid var(--border); border-radius: 12px; background: var(--surface-muted); }
+.match-court-copy strong, .match-court-copy small { display: block; }
+.match-court-copy strong { color: var(--ink); font-size: 12px; }
+.match-court-copy small { margin-top: 4px; color: var(--muted); font-size: 10px; line-height: 1.4; }
+#match-court-field .match-select { margin-top: 0; padding: 10px 12px; font-size: 12px; }
+#match-player-fields { display: grid; gap: 4px; }
 .player-dialog { width: min(510px, calc(100vw - 28px)); max-height: min(90vh, 680px); padding: 24px; overflow-y: auto; border: 1px solid #e5ebe5; border-radius: 18px; box-shadow: 0 24px 80px #203b2940; color: var(--ink); }
 .player-dialog[open] { animation: player-dialog-in .18s ease-out; }
 .player-dialog::backdrop { background: #1d30277d; backdrop-filter: blur(3px); }
@@ -383,11 +396,14 @@ td strong { color: #34473b; }
 .score-fields { display: grid; grid-template-columns: 1fr 90px; align-items: center; gap: 9px; }
 .score-fields .field-label { margin: 0; }
 .dialog-hint { margin: 12px 0 0; color: #819087; font-size: 10px; line-height: 1.5; }
-.match-team-field { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; margin: 0 0 13px; padding: 12px; border: 1px solid #e7ece7; border-radius: 9px; }
-.match-team-field legend { padding: 0 6px; color: #597061; font-size: 10px; font-weight: 700; }
+.match-team-field { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin: 0 0 16px; padding: 15px; border: 1px solid var(--border); border-radius: 12px; }
+.match-team-field legend { padding: 0 7px; color: #597061; font-size: 11px; font-weight: 700; }
 .match-select-label { color: #7d8b81; font-size: 9px; }
-.match-select { display: block; margin-top: 5px; padding: 8px 6px; font-size: 10px; }
+.match-select { display: block; margin-top: 6px; padding: 10px 9px; font-size: 11px; }
+.match-team-field .match-select { min-height: 44px; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
+#match-dialog .dialog-hint { margin-top: 2px; font-size: 11px; line-height: 1.55; }
+#match-dialog .dialog-actions { margin-top: 22px; }
 .roster-manager-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: #1d30277d; backdrop-filter: blur(3px); }
 .roster-manager { display: flex; width: min(620px, 100%); max-height: min(82vh, 760px); flex-direction: column; padding: 22px; overflow: hidden; border: 1px solid #e5ebe5; border-radius: 16px; background: #fff; box-shadow: 0 24px 80px #203b2940; }
 .roster-manager-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 17px; }
@@ -451,6 +467,7 @@ td strong { color: #34473b; }
   .summary-actions { width: 100%; }
   .summary-actions .button { flex: 1; min-height: 44px; }
   .match-list { grid-template-columns: 1fr; }
+  .upcoming-match-list { grid-template-columns: 1fr; }
   .waiting-cards { grid-template-columns: 1fr; }
   .waiting-cards.has-pagination { grid-template-rows: repeat(6, minmax(50px, auto)); }
   .settings-grid { grid-template-columns: 1fr; gap: 14px; }
@@ -497,6 +514,9 @@ td strong { color: #34473b; }
   .history-score { display: none; }
   .leaderboard-panel > .panel-heading .muted { max-width: 48%; }
   .result-dialog, .player-dialog { width: calc(100vw - 24px); max-height: min(90vh, 720px); padding: 18px 14px; }
+  #match-dialog { width: calc(100vw - 24px); max-height: min(90vh, 760px); padding: 20px 16px; }
+  #match-court-field { grid-template-columns: minmax(0, 1fr); gap: 9px; margin-bottom: 16px; padding: 12px; }
+  .match-team-field { grid-template-columns: minmax(0, 1fr); gap: 8px; padding: 11px; }
   .skill-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .skill-option > span { min-height: 58px; }
   .dialog-actions .button { min-height: 42px; }
@@ -526,6 +546,7 @@ td strong { color: #34473b; }
 :root[data-theme="dark"] .player-row,
 :root[data-theme="dark"] .match-player,
 :root[data-theme="dark"] .waiting-section,
+:root[data-theme="dark"] .upcoming-section,
 :root[data-theme="dark"] .fairness-note,
 :root[data-theme="dark"] .history-row,
 :root[data-theme="dark"] td,
@@ -615,6 +636,7 @@ td strong { color: #34473b; }
 :root[data-theme="dark"] .list-pagination .button:hover:not(:disabled) { border-color: #786143; background: #352b1e; color: #efd7b3; }
 :root[data-theme="dark"] .list-pagination .button:disabled { border-color: #35332f; background: #211f1d; color: #77736b; }
 :root[data-theme="dark"] .player-preview { border-color: #3c3a35; background: linear-gradient(115deg, #24231f, #1b1a18); }
+:root[data-theme="dark"] #match-court-field { background: #22211f; }
 :root[data-theme="dark"] .player-dialog::backdrop,
 :root[data-theme="dark"] .result-dialog::backdrop { background: #000a; }
 :root[data-theme="dark"] .roster-manager-backdrop { background: #000a; }

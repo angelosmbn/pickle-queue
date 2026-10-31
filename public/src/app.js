@@ -1,5 +1,5 @@
 import {
-  addPlayer, cancelProposedMatch, createCustomMatch, createSession, editQueuedMatch, endSession, generateMatches, getStatistics, importRestingPlayers,
+  addPlayer, cancelProposedMatch, createCustomMatch, createSession, editQueuedMatch, endSession, generateMatches, getStatistics, importRestingPlayers, previewNextMatch,
   editCompletedScore, getStrategyName, pauseSession, pauseMatch, recordResultAndGenerate, removePlayer, resumeMatch, resumeSession, setPlayerAvailability, stopMatch,
   skillName, startMatch, startSession, updateOrganizerDetails, updatePlayer, SKILLS, matchFairness
 } from "./domain.js";
@@ -22,6 +22,7 @@ const toastNotification = document.querySelector("#toast-notification");
 const toastMessage = document.querySelector("#toast-message");
 const toastIndicator = document.querySelector("#toast-indicator");
 let session;
+const upcomingMatchEdits = new Map();
 let notice = "";
 let validationNotice = "";
 let displayedNotice = "";
@@ -74,6 +75,27 @@ document.querySelector('meta[name="theme-color"]').content = !session || theme =
 
 function persist() {
   if (session) saveSession(session);
+  upcomingMatchEdits.clear();
+}
+
+function getUpcomingMatchPreviews() {
+  if (!session) return [];
+  const reservedCourts = new Set(session.matches
+    .filter((match) => ["proposed", "inProgress"].includes(match.status))
+    .map((match) => match.court));
+  const nextAvailableCourt = Array.from({ length: session.courts }, (_, index) => index + 1)
+    .find((court) => !reservedCourts.has(court)) ?? 1;
+  return previewNextMatch(session).map((match, index) => {
+    const edit = upcomingMatchEdits.get(index);
+    const teams = edit?.teams ?? match.teams;
+    return {
+      ...match,
+      teams: teams.map((team) => [...team]),
+      playerIds: teams.flat(),
+      court: edit?.court ?? (match.court <= session.courts ? match.court : nextAvailableCourt),
+      previewIndex: index
+    };
+  });
 }
 
 function themeToggle() {
@@ -137,6 +159,7 @@ function render() {
   const alphabeticalPlayers = sortPlayersByName(session.players);
   const lineupPlayers = searchPlayers(alphabeticalPlayers, lineupSearch);
   const liveMatches = session.matches.filter((match) => ["proposed", "inProgress"].includes(match.status));
+  const upcomingMatches = session.status === "active" ? getUpcomingMatchPreviews() : [];
   const activeCourts = session.matches.filter((match) => match.status === "inProgress").length;
   const completed = session.matches.filter((match) => match.status === "completed").slice().reverse();
   const rosterPageCount = Math.max(1, Math.ceil(lineupPlayers.length / rosterPageSize));
@@ -225,6 +248,7 @@ function render() {
             ${liveMatches.length ? liveMatches.map(matchCard).join("") :
               `<div class="empty-state"><span class="empty-icon">⌁</span><strong>${session.status === "active" ? "Ready for the next game?" : "No games on court"}</strong><span>${session.status === "active" ? "Generate a fair set of matches for the open courts." : "Your proposed and in-progress games will show here."}</span>${session.status === "active" ? '<button class="button button-primary button-small" data-action="generate">Generate matches</button>' : ""}</div>`}
           </div>
+          ${upcomingMatches.length ? `<section class="upcoming-section"><div class="waiting-heading"><span class="eyebrow">UPCOMING MATCHES · PREVIEW</span></div><div class="upcoming-match-list">${upcomingMatches.map((match, index) => matchCard({ ...match, status: "preview", court: null, previewIndex: index })).join("")}</div></section>` : ""}
           <section class="waiting-section">
             <div class="waiting-heading"><span class="eyebrow">AVAILABLE NEXT</span><span class="count-badge">${waiting.length}</span></div>
             <div class="waiting-cards ${waiting.length > waitingPageSize ? "has-pagination" : ""}">${waiting.length ? visibleWaiting.map(waitingCard).join("") : '<span class="muted">No unassigned players waiting</span>'}</div>
@@ -438,21 +462,28 @@ function matchCard(match) {
   const activeCourtNumbers = new Set(session.matches
     .filter((entry) => entry.status === "inProgress")
     .map((entry) => entry.court));
-  const reservedCourtNumbers = new Set(session.matches
-    .filter((entry) => entry.id !== match.id && ["proposed", "inProgress"].includes(entry.status))
-    .map((entry) => entry.court));
-  const canReassignCourt = Array.from({ length: session.courts }, (_, index) => index + 1)
-    .some((court) => !reservedCourtNumbers.has(court));
   const canStart = session.status === "active" && activeCourts < session.courts &&
-    (!activeCourtNumbers.has(match.court) || canReassignCourt) &&
+    !activeCourtNumbers.has(match.court) &&
     match.playerIds.every((id) => session.players.find((player) => player.id === id)?.status === "active");
-  return `<article class="match-card ${match.status === "inProgress" ? "match-playing" : ""} ${match.pausedAt ? "match-paused" : ""}">
-    <div class="match-top"><div class="court-label"><span class="court-icon">▦</span> Court ${match.court ?? "unassigned"} ${match.kind === "custom" ? '<span class="custom-badge">CUSTOM</span>' : ""}</div><span class="match-status">${match.status === "inProgress" ? `${match.pausedAt ? "PAUSED" : "IN PLAY"} · LOCKED ${timer}` : "QUEUED"}</span></div>
+  const courtLabel = match.status === "preview"
+    ? '<span class="court-icon">⌁</span> Next match'
+    : `<span class="court-icon">▦</span> Court ${match.court ?? "unassigned"} ${match.kind === "custom" ? '<span class="custom-badge">CUSTOM</span>' : ""}`;
+  const statusLabel = match.status === "preview" ? "PREVIEW · NOT QUEUED" :
+    match.status === "inProgress" ? `${match.pausedAt ? "PAUSED" : "IN PLAY"} · LOCKED ${timer}` : "QUEUED";
+  const actions = match.status === "proposed"
+    ? `${session.status === "active" ? `<button class="button button-primary button-small" data-action="start-match" data-id="${match.id}" title="${activeCourtNumbers.has(match.court) ? `Court ${match.court} is currently in use.` : canStart ? "Start this game" : "All courts are occupied."}" ${canStart ? "" : "disabled"}>Start game</button>` : ""}<button class="button button-quiet button-small" data-action="edit-match" data-id="${match.id}" ${session.status !== "active" ? "disabled" : ""}>Edit match</button><button class="button button-quiet button-small" data-action="cancel-match" data-id="${match.id}">Remove</button>`
+    : match.status === "inProgress"
+      ? `${match.pausedAt ? `<button class="button button-primary button-small" data-action="resume-game" data-id="${match.id}">Resume</button>` : `<button class="button button-quiet button-small" data-action="pause-game" data-id="${match.id}">Pause</button>`}<button class="button button-danger-quiet button-small" data-action="stop-game" data-id="${match.id}">Stop</button>${match.pausedAt ? "" : `<button class="button button-primary button-small" data-action="record-result" data-id="${match.id}">Record score</button>`}`
+      : match.status === "preview"
+        ? `<button class="button button-quiet button-small" data-action="edit-preview" data-preview-index="${match.previewIndex}">Edit</button><button class="button button-primary button-small" data-action="queue-preview" data-preview-index="${match.previewIndex}">Queue</button>`
+        : "";
+  return `<article class="match-card ${match.status === "inProgress" ? "match-playing" : ""} ${match.pausedAt ? "match-paused" : ""} ${match.status === "preview" ? "match-preview" : ""}">
+    <div class="match-top"><div class="court-label">${courtLabel}</div><span class="match-status">${statusLabel}</span></div>
     <div class="teams">${teams.map((team, index) => `<div class="team"><span class="team-label">TEAM ${index ? "B" : "A"}${match.status === "completed" && match.winnerTeam === index ? " · WINNER" : ""}</span>${team.map(playerMatchLine).join("")}</div>${index === 0 ? '<span class="vs">VS</span>' : ""}`).join("")}</div>
     ${score ? `<div class="match-score">${escapeHtml(score)}</div>` : ""}
     ${match.warning ? `<div class="match-warning" title="${escapeHtml(match.reason)}">⚠ Skill balance trade-off <span class="warning-help">${escapeHtml(match.reason)}</span></div>` : `<p class="match-reason">${escapeHtml(match.reason)}</p>`}
     ${match.status === "proposed" && session.status === "active" && activeCourts >= session.courts ? '<p class="match-reason">All courts are occupied. This match will wait for a court to open.</p>' : ""}
-    <div class="match-actions">${match.status === "proposed" ? `${session.status === "active" ? `<button class="button button-primary button-small" data-action="start-match" data-id="${match.id}" title="${canStart ? "Start this game" : "All courts are occupied."}" ${canStart ? "" : "disabled"}>Start game</button>` : ""}<button class="button button-quiet button-small" data-action="edit-match" data-id="${match.id}" ${session.status !== "active" ? "disabled" : ""}>Edit match</button><button class="button button-quiet button-small" data-action="cancel-match" data-id="${match.id}">Remove</button>` : match.status === "inProgress" ? `${match.pausedAt ? `<button class="button button-primary button-small" data-action="resume-game" data-id="${match.id}">Resume</button>` : `<button class="button button-quiet button-small" data-action="pause-game" data-id="${match.id}">Pause</button>`}<button class="button button-danger-quiet button-small" data-action="stop-game" data-id="${match.id}">Stop</button>${match.pausedAt ? "" : `<button class="button button-primary button-small" data-action="record-result" data-id="${match.id}">Record score</button>`}` : ""}</div>
+    ${actions ? `<div class="match-actions">${actions}</div>` : ""}
   </article>`;
 }
 
@@ -887,8 +918,21 @@ matchForm.addEventListener("submit", (event) => {
     if (matchForm.dataset.mode === "custom") {
       createCustomMatch(session, teams, Number(data.get("court")));
       notice = "";
+    } else if (matchForm.dataset.mode === "preview-edit") {
+      const previewIndex = Number(matchForm.dataset.previewIndex);
+      if (!Number.isInteger(previewIndex) || previewIndex < 0) {
+        throw new Error("This upcoming match is no longer available. Refresh the preview and try again.");
+      }
+      upcomingMatchEdits.set(previewIndex, {
+        teams: teams.map((team) => [...team]),
+        court: Number(data.get("court"))
+      });
+      notice = "";
+      matchDialog.close();
+      render();
+      return;
     } else {
-      editQueuedMatch(session, data.get("matchId"), teams);
+      editQueuedMatch(session, data.get("matchId"), teams, Number(data.get("court")));
       notice = "";
     }
     matchDialog.close();
@@ -1094,6 +1138,17 @@ app.addEventListener("click", async (event) => {
     if (action === "start-match") startMatch(session, id);
     if (action === "create-custom") openMatchEditor("custom");
     if (action === "edit-match") openMatchEditor("edit", id);
+    if (action === "edit-preview") {
+      const preview = getUpcomingMatchPreviews()[Number(button.dataset.previewIndex)];
+      if (!preview) throw new Error("This upcoming match is no longer available. Refresh the preview and try again.");
+      openMatchEditor("preview-edit", "", preview);
+    }
+    if (action === "queue-preview") {
+      const preview = getUpcomingMatchPreviews()[Number(button.dataset.previewIndex)];
+      if (!preview) throw new Error("This upcoming match is no longer available. Refresh the preview and try again.");
+      createCustomMatch(session, preview.teams, preview.court);
+      notice = "";
+    }
     if (action === "pause-game") pauseMatch(session, id);
     if (action === "resume-game") resumeMatch(session, id);
     if (action === "stop-game") {
@@ -1387,14 +1442,14 @@ function updatePlayerPreview() {
   document.querySelector("#player-preview-skill").textContent = skillName(skill);
 }
 
-function openMatchEditor(mode, matchId = "") {
+function openMatchEditor(mode, matchId = "", preview = null) {
   clearFormValidation(matchForm);
   if (session.status !== "active") throw new Error("Resume the session before changing matches.");
   const editing = mode === "edit";
   const match = editing ? session.matches.find((entry) => entry.id === matchId) : null;
   if (editing && match?.status !== "proposed") throw new Error("Only queued matches can be edited.");
   const size = session.format === "doubles" ? 2 : 1;
-  const existingTeams = match?.teams ?? [[], []];
+  const existingTeams = match?.teams ?? preview?.teams ?? [[], []];
   const inProgressIds = new Set(session.matches.filter((entry) => entry.status === "inProgress" && entry.id !== matchId).flatMap((entry) => entry.playerIds));
   const reserved = new Map();
   session.matches.filter((entry) => entry.status === "proposed" && entry.id !== matchId).forEach((entry) => {
@@ -1402,18 +1457,25 @@ function openMatchEditor(mode, matchId = "") {
   });
   matchForm.dataset.mode = mode;
   matchForm.elements.matchId.value = matchId;
-  document.querySelector("#match-dialog-eyebrow").textContent = editing ? "EDIT QUEUED MATCH" : "ORGANIZER PICK";
-  document.querySelector("#match-dialog-title").textContent = editing ? "Edit match" : `Create custom ${session.format} match`;
+  document.querySelector("#match-dialog-eyebrow").textContent = editing ? "EDIT QUEUED MATCH" : mode === "preview" ? "EDIT UPCOMING MATCH" : "ORGANIZER PICK";
+  document.querySelector("#match-dialog-title").textContent = editing ? "Edit match" : mode === "preview" ? "Edit upcoming match" : `Create custom ${session.format} match`;
+  matchForm.dataset.previewIndex = mode === "preview-edit" ? String(preview?.previewIndex ?? "") : "";
+  matchForm.querySelector('button[type="submit"]').textContent = editing || mode === "preview-edit" ? "Save changes" : "Queue match";
   const courtField = document.querySelector("#match-court-field");
   const courtSelect = document.querySelector("#match-court");
-  courtField.hidden = editing;
+  courtField.hidden = false;
   const reservedCourts = new Set(session.matches
     .filter((entry) => ["proposed", "inProgress"].includes(entry.status))
     .map((entry) => entry.court));
-  const defaultCourt = match?.court ?? Array.from({ length: session.courts }, (_, index) => index + 1)
-    .find((court) => !reservedCourts.has(court)) ?? 1;
+  const defaultCourt = [match?.court, preview?.court]
+    .find((court) => Number.isInteger(court) && court >= 1 && court <= session.courts) ??
+    Array.from({ length: session.courts }, (_, index) => index + 1)
+      .find((court) => !reservedCourts.has(court)) ?? 1;
+  const activeCourts = new Set(session.matches
+    .filter((entry) => entry.status === "inProgress")
+    .map((entry) => entry.court));
   courtSelect.innerHTML = Array.from({ length: session.courts }, (_, index) => index + 1)
-    .map((court) => `<option value="${court}" ${court === defaultCourt ? "selected" : ""}>Court ${court}</option>`)
+    .map((court) => `<option value="${court}" ${court === defaultCourt ? "selected" : ""}>Court ${court}${activeCourts.has(court) ? " · In use" : ""}</option>`)
     .join("");
   document.querySelector("#match-player-fields").innerHTML = [0, 1].map((teamIndex) =>
     `<fieldset class="match-team-field"><legend>Team ${teamIndex ? "B" : "A"}</legend>${Array.from({ length: size }, (_, slot) => {
@@ -1428,8 +1490,10 @@ function openMatchEditor(mode, matchId = "") {
       return `<label class="match-select-label">Player ${slot + 1}<select class="text-input match-select" name="team${teamIndex ? "B" : "A"}${slot}" required><option value="" disabled ${selected ? "" : "selected"}>Choose a player</option>${options}</select></label>`;
     }).join("")}</fieldset>`).join("");
   document.querySelector("#match-fairness").textContent = editing
-    ? "Selecting a player from another queued match swaps them with the player leaving this match. Selecting someone from the other team moves them to the chosen side."
-    : "You can select any active player, including someone queued elsewhere. Their queued spot is backfilled from the waiting lineup; the custom match is blocked if no replacement is available.";
+    ? "Selecting a player from another queued match swaps them with the player leaving this match. Selecting someone from the other team moves them to the chosen side. A match assigned to an in-use court cannot start until it is free."
+    : mode === "preview-edit"
+      ? "Save changes to this preview, then queue it when you are ready. A match assigned to an in-use court cannot start until it is free."
+      : "You can select any active player, including someone queued elsewhere. Their queued spot is backfilled from the waiting lineup; the custom match is blocked if no replacement is available. You may assign an in-use court, but the match cannot start until it is free.";
   const playerFields = document.querySelector("#match-player-fields");
   playerFields.querySelectorAll(".match-select").forEach((field) => { field.dataset.previousValue = field.value; });
   playerFields.onchange = (event) => {

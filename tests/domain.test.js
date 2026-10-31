@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import {
   addPlayer, cancelProposedMatch, createSession, endSession, generateMatches, getStatistics, importRestingPlayers, pauseSession, updateOrganizerDetails, updatePlayer,
   recordResult, removePlayer, resumeSession, setPlayerAvailability, startMatch, startSession,
-  createCustomMatch, editQueuedMatch, editInProgressMatch, editCompletedScore,
+  createCustomMatch, editQueuedMatch, editInProgressMatch, editCompletedScore, previewNextMatch,
   pauseMatch, resumeMatch, stopMatch
 } from "../public/src/domain.js";
 
@@ -65,6 +65,39 @@ test("custom matches reject courts outside the session court count", () => {
   ];
 
   assert.throws(() => createCustomMatch(session, teams, 3), /valid court/);
+});
+
+test("previews the next match from waiting players without changing the session", () => {
+  const session = fixture({ count: 12, courts: 2 });
+  startSession(session);
+  const before = JSON.stringify(session);
+
+  const previews = previewNextMatch(session);
+
+  assert.equal(previews.length, 1);
+  assert.equal(previews[0].playerIds.length, 4);
+  assert.equal(previews[0].status, "proposed");
+  assert.ok(previews[0].playerIds.every((id) =>
+    !session.matches.some((match) =>
+      ["proposed", "inProgress"].includes(match.status) && match.playerIds.includes(id))));
+  assert.equal(JSON.stringify(session), before);
+});
+
+test("previews up to two non-overlapping upcoming matches", () => {
+  const session = fixture({ count: 16, courts: 2 });
+  startSession(session);
+
+  const previews = previewNextMatch(session);
+
+  assert.equal(previews.length, 2);
+  assert.equal(new Set(previews.flatMap((match) => match.playerIds)).size, 8);
+});
+
+test("does not preview a match when fewer than the required players are waiting", () => {
+  const session = fixture({ count: 10, courts: 2 });
+  startSession(session);
+
+  assert.deepEqual(previewNextMatch(session), []);
 });
 
 test("imported players are intermediate, resting, and receive unique names", () => {
@@ -609,6 +642,19 @@ test("a queued match cannot start without an open court or with a duplicated ass
   assert.equal(custom.status, "proposed");
   assert.equal(first.status, "inProgress");
   assert.throws(() => editQueuedMatch(session, first.id, first.teams), /Only queued matches/);
+});
+
+test("queued matches can be reassigned to an in-use court but cannot start there", () => {
+  const session = fixture({ count: 8, courts: 2 });
+  startSession(session);
+  const [active, queued] = session.matches;
+  startMatch(session, active.id);
+
+  editQueuedMatch(session, queued.id, queued.teams, active.court);
+
+  assert.equal(queued.court, active.court);
+  assert.throws(() => startMatch(session, queued.id), /currently in use/);
+  assert.equal(queued.status, "proposed");
 });
 
 test("starting a match records its start time for the elapsed game timer", () => {

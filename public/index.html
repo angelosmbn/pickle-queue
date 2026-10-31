@@ -6,7 +6,7 @@
     <meta name="theme-color" content="#f5f4f1">
     <title>Gear Up Rally — Court session manager</title>
     <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2">
-    <link rel="stylesheet" href="./styles.css?v=30">
+    <link rel="stylesheet" href="./styles.css?v=35">
   </head>
   <body>
     <main id="app" class="app-shell" aria-live="polite"></main>
@@ -48,11 +48,14 @@
           <button type="button" class="icon-button" data-action="close-match" aria-label="Close">×</button>
         </div>
         <input type="hidden" name="matchId">
-        <div id="match-player-fields"></div>
-        <label id="match-court-field" class="match-select-label" hidden>
-          Court
+        <label id="match-court-field" class="match-court-field">
+          <span class="match-court-copy">
+            <strong>Court assignment</strong>
+            <small>An in-use court can be assigned, but the match cannot start until it is free.</small>
+          </span>
           <select id="match-court" class="text-input match-select" name="court" required></select>
         </label>
+        <div id="match-player-fields"></div>
         <p id="match-fairness" class="dialog-hint"></p>
         <div class="dialog-actions">
           <button type="button" class="button button-quiet" data-action="close-match">Cancel</button>
@@ -158,6 +161,6 @@
         </div>
       </form>
     </dialog>
-    <script type="module" src="./src/app.js?v=19"></script>
+    <script type="module" src="./src/app.js?v=26"></script>
   </body>
 </html>

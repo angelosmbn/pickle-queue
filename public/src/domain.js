@@ -333,6 +333,15 @@ export function generateMatches(session, now = Date.now()) {
   };
 }
 
+export function previewNextMatch(session, now = Date.now()) {
+  if (session.status !== "active") return [];
+  const previewSession = structuredClone(session);
+  const reservedMatches = previewSession.matches.filter((match) =>
+    ["proposed", "inProgress"].includes(match.status)).length;
+  previewSession.courts = Math.max(previewSession.courts, reservedMatches + 2);
+  return generateMatches(previewSession, now).matches.slice(0, 2);
+}
+
 function teamSignature(teams) {
   return teams.map((team) => [...team].sort().join("|")).sort().join("||");
 }
@@ -358,15 +367,12 @@ export function startMatch(session, matchId) {
   if (match.playerIds.some((id) => getPlayer(session, id).status !== "active")) {
     throw new Error("A player is no longer available. Remove this match and generate a replacement.");
   }
-  const reservedCourts = new Set(session.matches
-    .filter((entry) => entry.id !== match.id && ["proposed", "inProgress"].includes(entry.status))
-    .map((entry) => entry.court));
-  if (!Number.isInteger(match.court) || match.court < 1 || match.court > session.courts ||
-      activeMatches.some((entry) => entry.court === match.court)) {
-    match.court = Array.from({ length: session.courts }, (_, index) => index + 1)
-      .find((court) => !reservedCourts.has(court));
+  if (!Number.isInteger(match.court) || match.court < 1 || match.court > session.courts) {
+    throw new Error("This match does not have a valid court assigned.");
   }
-  if (!match.court) throw new Error("No court is available for this queued match.");
+  if (activeMatches.some((entry) => entry.court === match.court)) {
+    throw new Error(`Court ${match.court} is currently in use.`);
+  }
   match.status = "inProgress";
   match.startedAt = new Date().toISOString();
   match.pausedAt = null;
@@ -540,19 +546,23 @@ function nextCourt(session) {
     .find((court) => !reservedCourts.has(court)) ?? 1;
 }
 
-export function editQueuedMatch(session, matchId, teams) {
-  return editMatchPlayers(session, matchId, teams, false);
+export function editQueuedMatch(session, matchId, teams, court) {
+  return editMatchPlayers(session, matchId, teams, false, court);
 }
 
 export function editInProgressMatch(session, matchId, teams) {
   return editMatchPlayers(session, matchId, teams, true);
 }
 
-function editMatchPlayers(session, matchId, teams, allowInProgress) {
+function editMatchPlayers(session, matchId, teams, allowInProgress, court) {
   if (session.status !== "active") throw new Error("Resume the session before editing match players.");
   const target = getMatch(session, matchId);
   const expectedStatus = allowInProgress ? "inProgress" : "proposed";
   if (target.status !== expectedStatus) throw new Error(allowInProgress ? "Only in-progress matches can be edited." : "Only queued matches can be edited.");
+  const nextCourt = court ?? target.court;
+  if (!Number.isInteger(nextCourt) || nextCourt < 1 || nextCourt > session.courts) {
+    throw new Error("Choose a valid court for this session.");
+  }
   const groupSize = session.format === "doubles" ? 4 : 2;
   validateTeams(teams, groupSize);
   const nextIds = teams.flat();
@@ -601,6 +611,7 @@ function editMatchPlayers(session, matchId, teams, allowInProgress) {
   });
   target.teams = teams.map((team) => [...team]);
   target.playerIds = [...nextIds];
+  target.court = nextCourt;
   target.skillAtMatch = Object.fromEntries(nextIds.map((id) => [id, getPlayer(session, id).skill]));
   refreshFairness(session, target);
   const now = Date.now();
