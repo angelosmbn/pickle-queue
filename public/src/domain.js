@@ -177,9 +177,6 @@ export function startSession(session) {
   if (startablePlayers.length < required) {
     throw new Error(`Add at least ${required} available or resting players before starting ${session.format}.`);
   }
-  session.players
-    .filter((player) => player.status === "resting")
-    .forEach((player) => setPlayerAvailability(session, player.id, "active"));
   session.status = "active";
   return generateMatches(session);
 }
@@ -475,8 +472,11 @@ export function cancelProposedMatch(session, matchId) {
   if (match.kind === "generated") match.removedAt = new Date().toISOString();
 }
 
-export function createCustomMatch(session, teams) {
+export function createCustomMatch(session, teams, court = nextCourt(session)) {
   if (session.status !== "active") throw new Error("Custom matches can only be queued in an active session.");
+  if (!Number.isInteger(court) || court < 1 || court > session.courts) {
+    throw new Error("Choose a valid court for this session.");
+  }
   const groupSize = session.format === "doubles" ? 4 : 2;
   validateTeams(teams, groupSize);
   const ids = teams.flat();
@@ -517,7 +517,7 @@ export function createCustomMatch(session, teams) {
   }
   const candidate = evaluateTeams(session, teams);
   const match = {
-    id: makeId("match"), court: nextCourt(session), playerIds: ids, teams: teams.map((team) => [...team]),
+    id: makeId("match"), court, playerIds: ids, teams: teams.map((team) => [...team]),
     kind: "custom", skillAtMatch: Object.fromEntries(ids.map((id) => [id, getPlayer(session, id).skill])),
     status: "proposed", createdAt: new Date().toISOString(), startedAt: null, completedAt: null,
     winnerTeam: null, score: "", scoreA: null, scoreB: null, warning: candidate.warning, reason: "Custom matchup set by organizer."

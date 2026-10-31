@@ -10,14 +10,14 @@ A local-first pickleball session manager for a single organizer. The frontend li
 - A floating all-player manager with status filters and bulk rest, return, and removal actions.
 - Unique player names, checked case-insensitively when adding or editing players.
 - Four matching strategies, deterministic scoring, court-aware simultaneous match selection, fairness explanations, and soft skill-gap warnings.
-- Organizer-created custom matches, queued-match editing, automatic player exchanges, plus pause/resume and stop-to-queue controls.
+- Organizer-created custom matches with court selection, queued-match editing, automatic player exchanges, plus pause/resume and stop-to-queue controls.
 - Configurable score targets and optional deuce (win-by-two) validation, score correction with statistic recalculation, automatic stats, a minimum-games leaderboard, and completed-game history.
 - A live elapsed-time timer on every in-progress game.
 - Match cards with player skill levels and session win rates, plus waiting cards that exclude reserved and playing players.
 - Browser `localStorage` persistence, so a refresh on the same browser/device keeps the session.
 - Required session feedback with a 1–5 star rating, included in the final Gmail report sent through a Vercel serverless function, plus a thank-you email to the organizer.
 
-Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads confirmed participants and their public display names regardless of payment status; waitlisted and cancelled participants are excluded. It does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. Resting players count toward the minimum to start a session and are returned to the active queue when the session starts. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
+Use **Import Reclub** in the player lineup and paste a public event link such as `https://reclub.co/m/7E2ZJD`. The importer reads confirmed participants and their public display names regardless of payment status; waitlisted and cancelled participants are excluded. It does not sign in or access private event data. Imported players are set to Intermediate and resting, and duplicate names receive a numbered suffix. Resting players count toward the minimum to start a session, but remain resting after it starts; mark them active when they are ready to join the queue. The importer works with `npm start` locally and through its serverless endpoint on Vercel.
 
 Use the lineup search beside **View all players** to find a player by name. Choose **View all players** to open the floating manager, where search can be combined with active, queued, playing, paused, resting, or unavailable status filters. Select visible players individually or together and bulk mark them resting, return them to the queue, or remove eligible players. Players with completed games or currently on court cannot be removed. Removing players or changing the status of queued players cancels affected queued matches after confirmation.
 

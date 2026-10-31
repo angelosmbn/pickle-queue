@@ -552,15 +552,6 @@ function validateForm(form) {
   }
 
   const message = validationSummaryText(invalidTargets);
-  const summary = document.createElement("p");
-  summary.className = "form-validation-message";
-  summary.setAttribute("aria-live", "off");
-  summary.textContent = message;
-  const actionRow = form.querySelector(".dialog-actions");
-  const submitButton = form.querySelector('button[type="submit"]');
-  if (actionRow) form.insertBefore(summary, actionRow);
-  else if (form.matches(".add-player-form, .reclub-import-form")) form.append(summary);
-  else form.insertBefore(summary, submitButton ?? null);
   setValidationNotice(message, true);
   updateToast();
   invalidTargets[0].field.focus();
@@ -596,7 +587,6 @@ function validationSummaryText(targets) {
 function clearFormValidation(form) {
   form.querySelectorAll(".is-invalid").forEach((field) => field.classList.remove("is-invalid"));
   form.querySelectorAll('[aria-invalid="true"]').forEach((field) => field.removeAttribute("aria-invalid"));
-  form.querySelectorAll(".form-validation-message").forEach((message) => message.remove());
 }
 
 function clearCorrectedField(field) {
@@ -604,8 +594,7 @@ function clearCorrectedField(field) {
   const form = field.form;
   const radioGroup = field.type === "radio" ? field.closest(".feedback-rating") : null;
   const hadValidationError = field.classList.contains("is-invalid") ||
-    radioGroup?.classList.contains("is-invalid") ||
-    form?.querySelector(".form-validation-message");
+    radioGroup?.classList.contains("is-invalid");
   if (!hadValidationError) return;
 
   if (field.validity.valid) {
@@ -618,14 +607,7 @@ function clearCorrectedField(field) {
   }
   if (!form) return;
   const invalidTargets = getInvalidTargets(form);
-  if (invalidTargets.length) {
-    const summary = form.querySelector(".form-validation-message");
-    if (summary) {
-      summary.textContent = validationSummaryText(invalidTargets);
-    }
-    return;
-  }
-  form.querySelectorAll(".form-validation-message").forEach((message) => message.remove());
+  if (invalidTargets.length) return;
   clearValidationNotice();
 }
 
@@ -651,6 +633,7 @@ function updateToast() {
     clearTimeout(noticeTimeout);
     noticeTimeout = null;
     displayedNotice = "";
+    if (toastNotification.matches(":popover-open")) toastNotification.hidePopover();
     toastNotification.hidden = true;
     toastNotification.classList.remove("is-fading", "toast-error");
     toastMessage.textContent = "";
@@ -668,6 +651,8 @@ function updateToast() {
   toastMessage.textContent = notice;
   toastNotification.classList.remove("is-fading");
   toastNotification.hidden = false;
+  if (toastNotification.matches(":popover-open")) toastNotification.hidePopover();
+  toastNotification.showPopover();
 
   const currentNotice = notice;
   noticeTimeout = setTimeout(() => {
@@ -900,7 +885,7 @@ matchForm.addEventListener("submit", (event) => {
   ];
   try {
     if (matchForm.dataset.mode === "custom") {
-      createCustomMatch(session, teams);
+      createCustomMatch(session, teams, Number(data.get("court")));
       notice = "";
     } else {
       editQueuedMatch(session, data.get("matchId"), teams);
@@ -1367,7 +1352,6 @@ function openResult(matchId, editing = false) {
   document.querySelector("#score-rules").textContent = session.settings.allowDeuce !== false
     ? `Winner must reach ${session.settings.scoringTo ?? 11} points and lead by at least 2.`
     : `Without deuce, the winner must score exactly ${session.settings.scoringTo ?? 11}; the other team must score less.`;
-  document.querySelector("#score-rules").classList.remove("notice-error");
   document.querySelector("#score-a").previousElementSibling.textContent = `Team A · ${teamLabels[0]}`;
   document.querySelector("#score-b").previousElementSibling.textContent = `Team B · ${teamLabels[1]}`;
   resultDialog.showModal();
@@ -1387,9 +1371,6 @@ function openPlayerEditor(player) {
   playerForm.querySelectorAll('input[name="skill"]').forEach((option) => {
     option.checked = Number(option.value) === player.skill;
   });
-  const error = document.querySelector("#player-edit-error");
-  error.textContent = "";
-  error.classList.remove("notice-error");
   updatePlayerPreview();
   playerDialog.showModal();
   playerForm.elements.name.focus();
@@ -1423,6 +1404,17 @@ function openMatchEditor(mode, matchId = "") {
   matchForm.elements.matchId.value = matchId;
   document.querySelector("#match-dialog-eyebrow").textContent = editing ? "EDIT QUEUED MATCH" : "ORGANIZER PICK";
   document.querySelector("#match-dialog-title").textContent = editing ? "Edit match" : `Create custom ${session.format} match`;
+  const courtField = document.querySelector("#match-court-field");
+  const courtSelect = document.querySelector("#match-court");
+  courtField.hidden = editing;
+  const reservedCourts = new Set(session.matches
+    .filter((entry) => ["proposed", "inProgress"].includes(entry.status))
+    .map((entry) => entry.court));
+  const defaultCourt = match?.court ?? Array.from({ length: session.courts }, (_, index) => index + 1)
+    .find((court) => !reservedCourts.has(court)) ?? 1;
+  courtSelect.innerHTML = Array.from({ length: session.courts }, (_, index) => index + 1)
+    .map((court) => `<option value="${court}" ${court === defaultCourt ? "selected" : ""}>Court ${court}</option>`)
+    .join("");
   document.querySelector("#match-player-fields").innerHTML = [0, 1].map((teamIndex) =>
     `<fieldset class="match-team-field"><legend>Team ${teamIndex ? "B" : "A"}</legend>${Array.from({ length: size }, (_, slot) => {
       const selected = existingTeams[teamIndex][slot] ?? "";
@@ -1438,7 +1430,6 @@ function openMatchEditor(mode, matchId = "") {
   document.querySelector("#match-fairness").textContent = editing
     ? "Selecting a player from another queued match swaps them with the player leaving this match. Selecting someone from the other team moves them to the chosen side."
     : "You can select any active player, including someone queued elsewhere. Their queued spot is backfilled from the waiting lineup; the custom match is blocked if no replacement is available.";
-  document.querySelector("#match-fairness").classList.remove("notice-error");
   const playerFields = document.querySelector("#match-player-fields");
   playerFields.querySelectorAll(".match-select").forEach((field) => { field.dataset.previousValue = field.value; });
   playerFields.onchange = (event) => {
@@ -1454,11 +1445,12 @@ function openMatchEditor(mode, matchId = "") {
     const fields = [...matchForm.querySelectorAll(".match-select")];
     const ids = fields.map((field) => field.value);
     const message = document.querySelector("#match-fairness");
-    message.classList.remove("notice-error");
     if (ids.some((id) => !id) || new Set(ids).size !== ids.length) {
-      message.textContent = "Select distinct players for every position.";
+      setValidationNotice("Select distinct players for every position.", true);
+      updateToast();
       return;
     }
+    clearValidationNotice();
     const fairness = matchFairness(session, [ids.slice(0, size), ids.slice(size)]);
     message.textContent = `Skill gap: ${fairness.skillGap.toFixed(1)} · ${fairness.warning ? "Outside preferred skill range." : "Within preferred skill range."}`;
   };

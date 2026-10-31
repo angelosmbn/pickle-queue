@@ -275,6 +275,7 @@ td strong { color: #34473b; }
 .page-footer span { margin: 0 4px; }
 .toast-notification {
   position: fixed;
+  z-index: 1000;
   top: max(12px, env(safe-area-inset-top));
   left: 50%;
   right: auto;
@@ -386,11 +387,7 @@ td strong { color: #34473b; }
 .match-team-field legend { padding: 0 6px; color: #597061; font-size: 10px; font-weight: 700; }
 .match-select-label { color: #7d8b81; font-size: 9px; }
 .match-select { display: block; margin-top: 5px; padding: 8px 6px; font-size: 10px; }
-.notice-error { background: #fbefeb; color: #a14f3d; }
 .dialog-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 20px; }
-.form-validation-message { display: flex; align-items: flex-start; gap: 9px; margin: 12px 0 0; padding: 11px 13px; border: 1px solid #edc3bb; border-radius: 9px; background: #fff3f0; color: #8d3026; font-size: 12px; font-weight: 600; line-height: 1.45; }
-.form-validation-message::before { display: grid; flex: 0 0 19px; place-items: center; width: 19px; height: 19px; border-radius: 50%; background: #a33f32; color: #fff; content: "!"; font-size: 12px; font-weight: 800; }
-.add-player-form .form-validation-message, .reclub-import-form .form-validation-message { grid-column: 1 / -1; }
 .roster-manager-backdrop { position: fixed; z-index: 30; inset: 0; display: grid; place-items: center; padding: 20px; background: #1d30277d; backdrop-filter: blur(3px); }
 .roster-manager { display: flex; width: min(620px, 100%); max-height: min(82vh, 760px); flex-direction: column; padding: 22px; overflow: hidden; border: 1px solid #e5ebe5; border-radius: 16px; background: #fff; box-shadow: 0 24px 80px #203b2940; }
 .roster-manager-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 17px; }
@@ -424,7 +421,6 @@ td strong { color: #34473b; }
 @media (max-width: 560px) {
   .toast-notification { top: max(8px, env(safe-area-inset-top)); width: calc(100vw - 24px); max-width: calc(100vw - 24px); padding: 12px; }
   .toast-message { font-size: 12px; }
-  .form-validation-message { gap: 8px; padding: 10px; font-size: 11px; }
   .session-date-courts-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .topbar { height: 64px; padding: 0 16px; }
   .brand { gap: 8px; }

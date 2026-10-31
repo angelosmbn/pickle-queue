@@ -41,6 +41,32 @@ test("custom matches receive a court number when queued", () => {
   assert.equal(custom.court, 1);
 });
 
+test("custom matches can be queued on a selected court", () => {
+  const session = fixture({ count: 12, courts: 2 });
+  startSession(session);
+  const waiting = session.players.filter((player) =>
+    !session.matches.some((match) => match.status === "proposed" && match.playerIds.includes(player.id)));
+  const custom = createCustomMatch(session, [
+    waiting.slice(0, 2).map((player) => player.id),
+    waiting.slice(2, 4).map((player) => player.id)
+  ], 2);
+
+  assert.equal(custom.court, 2);
+});
+
+test("custom matches reject courts outside the session court count", () => {
+  const session = fixture({ count: 12, courts: 2 });
+  startSession(session);
+  const waiting = session.players.filter((player) =>
+    !session.matches.some((match) => match.status === "proposed" && match.playerIds.includes(player.id)));
+  const teams = [
+    waiting.slice(0, 2).map((player) => player.id),
+    waiting.slice(2, 4).map((player) => player.id)
+  ];
+
+  assert.throws(() => createCustomMatch(session, teams, 3), /valid court/);
+});
+
 test("imported players are intermediate, resting, and receive unique names", () => {
   const session = fixture({ count: 1 });
   const imported = importRestingPlayers(session, ["Player 1", " Alex ", "Alex", "Alex (2)"]);
@@ -49,9 +75,32 @@ test("imported players are intermediate, resting, and receive unique names", () 
   assert.ok(imported.every((player) => player.skill === 3 && player.status === "resting" && player.waitSince === null));
 });
 
-test("starting a session activates resting players and includes them in the opening matches", () => {
+test("starting a session preserves resting players and matches only active players", () => {
   const session = createSession({
     name: "Imported roster",
+    courts: 1,
+    format: "doubles",
+    organizerEmail: "organizer@example.com"
+  });
+  const imported = importRestingPlayers(session, ["Alex", "Casey", "Jamie", "Morgan"]);
+  const active = ["Riley", "Jordan", "Taylor", "Avery"].map((name) => addPlayer(session, { name }));
+  const statusesBeforeStart = new Map(session.players.map((player) => [player.id, player.status]));
+
+  const result = startSession(session);
+
+  assert.equal(session.status, "active");
+  assert.deepEqual(
+    new Map(session.players.map((player) => [player.id, player.status])),
+    statusesBeforeStart
+  );
+  assert.ok(imported.every((player) => player.status === "resting" && player.waitSince === null));
+  assert.equal(result.matches.length, 1);
+  assert.ok(result.matches[0].playerIds.every((id) => active.some((player) => player.id === id)));
+});
+
+test("resting imported players still count toward the start minimum without changing status", () => {
+  const session = createSession({
+    name: "Resting imported roster",
     courts: 1,
     format: "doubles",
     organizerEmail: "organizer@example.com"
@@ -61,9 +110,8 @@ test("starting a session activates resting players and includes them in the open
   const result = startSession(session);
 
   assert.equal(session.status, "active");
-  assert.ok(imported.every((player) => player.status === "active" && player.waitSince !== null));
-  assert.equal(result.matches.length, 1);
-  assert.ok(result.matches[0].playerIds.every((id) => imported.some((player) => player.id === id)));
+  assert.ok(imported.every((player) => player.status === "resting"));
+  assert.deepEqual(result.matches, []);
 });
 
 test("player import rejects invalid lists without adding partial players", () => {
