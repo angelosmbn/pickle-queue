@@ -1514,6 +1514,11 @@ function openMatchEditor(mode, matchId = "", preview = null) {
       updateToast();
       return;
     }
+    if (ids.some((id) => !session.players.some((player) => player.id === id))) {
+      setValidationNotice("A selected player is no longer available. Reopen the editor and try again.", true);
+      updateToast();
+      return;
+    }
     clearValidationNotice();
     const fairness = matchFairness(session, [ids.slice(0, size), ids.slice(size)]);
     message.textContent = `Skill gap: ${fairness.skillGap.toFixed(1)} · ${fairness.warning ? "Outside preferred skill range." : "Within preferred skill range."}`;
